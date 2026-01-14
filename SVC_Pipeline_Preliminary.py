@@ -5,7 +5,7 @@ from sklearn.model_selection import(
     train_test_split,
     StratifiedKFold
 )
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
 from sklearn.preprocessing import (
     StandardScaler,
     PowerTransformer
@@ -79,14 +79,14 @@ pipeline = ImbPipeline([
     ("yjpt", PowerTransformer(method='yeo-johnson', standardize=False)),
     ("scaler", StandardScaler()),
     ("oversampling", SMOTE(random_state=42)),
-    ("clf", RandomForestClassifier(random_state=42))
+    ("clf", SVC(kernel="rbf", probability=True, random_state=42))
 ])
 
 # Define the parameter grid
 param_grid = {
     'oversampling__k_neighbors': [3, 5],
-    'clf__n_estimators': [100, 200],
-    'clf__max_depth': [10]
+    'clf__C': np.logspace(-3, 3, 7),
+    'clf__gamma': np.logspace(-4, 1, 6)
 }
 
 # Set up stratified K-fold cross-validation
@@ -95,8 +95,8 @@ cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 # Generate all parameter combinations
 param_combinations = list(product(
     param_grid['oversampling__k_neighbors'],
-    param_grid['clf__n_estimators'],
-    param_grid['clf__max_depth']
+    param_grid['clf__C'],
+    param_grid['clf__gamma']
 ))
 
 # Custom grid search loop
@@ -115,13 +115,13 @@ mean_recall = np.linspace(0, 1, 100)
 
 for params in param_combinations:
     # Unpack parameters
-    oversampling_k_neighbors, clf_n_estimators, clf_max_depth = params
+    oversampling_k_neighbors, clf_c, clf_gamma = params
     
     # Set pipeline parameters
     pipeline.set_params(
         oversampling__k_neighbors=oversampling_k_neighbors,
-        clf__n_estimators=clf_n_estimators,
-        clf__max_depth=clf_max_depth
+        clf__C=clf_c,
+        clf__gamma=clf_gamma
     )
     
     # Initialize scores for this parameter combination

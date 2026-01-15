@@ -56,7 +56,7 @@ y = ml_df['Anxiety_Binary']
 
 # Train-test split
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, stratify=y, random_state=42
+    X, y, test_size=0.20, stratify=y, random_state=42
 )
 
 # Outlier detection
@@ -86,7 +86,7 @@ pipeline = ImbPipeline([
 param_grid = {
     'oversampling__k_neighbors': [3, 5],
     'clf__C': np.logspace(-3, 3, 7),
-    'clf__gamma': np.logspace(-4, 1, 6)
+    'clf__gamma': np.logspace(-4, 3, 8)
 }
 
 # Set up stratified K-fold cross-validation
@@ -146,9 +146,9 @@ for params in param_combinations:
         f1_scores.append(f1_score(y_fold_val, y_fold_pred, average='binary'))
         precision_scores.append(precision_score(y_fold_val, y_fold_pred, average='binary', zero_division=0))
         recall_scores.append(recall_score(y_fold_val, y_fold_pred, average='binary', zero_division=0))
-
+        
         # Compute ROC curve, AUC and & interpolate TPR to common FPR points 
-        y_fold_proba = pipeline.predict_proba(X_fold_val)[:, 1]
+        y_fold_proba = pipeline.predict_proba(X_fold_val)[:, 1]  # Probability estimates for the positive class
         fpr, tpr, _ = roc_curve(y_fold_val, y_fold_proba)
         auc_score = auc(fpr, tpr)
         aucs.append(auc_score)
@@ -162,7 +162,7 @@ for params in param_combinations:
         precision, recall, _ = precision_recall_curve(y_fold_val, y_fold_proba)
         ap_score = average_precision_score(y_fold_val, y_fold_proba)  # Average precision
         aps.append(ap_score)
-
+        
         interp_precision = np.interp(mean_recall, recall[::-1], precision[::-1])  # Reverse order of recall and precision to align with mean_recall
         precisions.append(interp_precision)
         

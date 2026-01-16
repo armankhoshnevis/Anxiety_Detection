@@ -82,7 +82,7 @@ def IQR_OutlierDetection(X, lower_quantile=0.025, upper_quantile=0.975):
 pipeline = ImbPipeline([
     ("yjpt", PowerTransformer(method='yeo-johnson', standardize=True)),
     ("oversampling", SMOTE(random_state=42)),
-    ("clf", SVC(kernel="rbf", probability=True, random_state=42))
+    ("clf", SVC(kernel="rbf", probability=False, random_state=42))
 ])
 
 # Define the parameter grid
@@ -143,8 +143,8 @@ for params in param_combinations:
         balanced_accuracy_scores.append(balanced_accuracy_score(y_fold_val, y_fold_pred))
 
         # Compute AUC
-        y_fold_proba = pipeline.predict_proba(X_fold_val)[:, 1]  # Probability estimates for the positive class
-        fpr, tpr, _ = roc_curve(y_fold_val, y_fold_proba)
+        y_fold_scores = pipeline.decision_function(X_fold_val)  # Signed distance to the hyperplane
+        fpr, tpr, _ = roc_curve(y_fold_val, y_fold_scores)
         auc_score = auc(fpr, tpr)
         aucs.append(auc_score)
         
@@ -155,7 +155,7 @@ for params in param_combinations:
         fprs.append(fpr)
         
         # Compute Precision-Recall curve
-        precision, recall, _ = precision_recall_curve(y_fold_val, y_fold_proba)
+        precision, recall, _ = precision_recall_curve(y_fold_val, y_fold_scores)
         
         interpolated_precision = np.interp(mean_recall, recall[::-1], precision[::-1])  # Reverse order of recall and precision to align with mean_recall
         interpolated_precisions.append(interpolated_precision)
@@ -235,15 +235,15 @@ y_train_inliers = y_train[train_inliers]
 pipeline.fit(X_train_inliers, y_train_inliers)
 
 y_test_pred = pipeline.predict(X_test)
-y_test_proba = pipeline.predict_proba(X_test)[:, 1]
+y_test_scores = pipeline.decision_function(X_test)
 test_f1 = f1_score(y_test, y_test_pred, average='binary')
 test_precision = precision_score(y_test, y_test_pred, average='binary', zero_division=0)
 test_recall = recall_score(y_test, y_test_pred, average='binary', zero_division=0)
 test_specificity = recall_score(y_test, y_test_pred, average='binary', zero_division=0, pos_label=0)
 test_balanced_accuracy = balanced_accuracy_score(y_test, y_test_pred)
-test_ap = average_precision_score(y_test, y_test_proba)
+test_ap = average_precision_score(y_test, y_test_scores)
 
-fpr, tpr, _ = roc_curve(y_test, y_test_proba)
+fpr, tpr, _ = roc_curve(y_test, y_test_scores)
 test_auc = auc(fpr, tpr)
 plt.plot(fpr, tpr, color='b', label='Test ROC curve (AUC = {:.2f})'.format(test_auc))
 plt.plot([0, 1], [0, 1], color='gray', linestyle='--', lw=2, label='Random Classifier')
@@ -255,7 +255,7 @@ plt.title('Test ROC')
 plt.legend(loc='lower right')
 plt.show()
 
-precision, recall, _ = precision_recall_curve(y_test, y_test_proba)
+precision, recall, _ = precision_recall_curve(y_test, y_test_scores)
 plt.plot(recall, precision, color='b', label='Test PR (AP = {:.2f})'.format(test_ap))
 plt.xlim([-0.05, 1.05])
 plt.ylim([-0.05, 1.05])

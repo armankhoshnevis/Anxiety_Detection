@@ -14,6 +14,7 @@ from sklearn.metrics import(
     f1_score,
     precision_score,
     recall_score,
+    balanced_accuracy_score,
     roc_curve, 
     auc,
     precision_recall_curve,
@@ -100,18 +101,9 @@ param_combinations = list(product(
 ))
 
 # Custom grid search loop
-best_f1_score = -np.inf
-best_precision_score = -np.inf
-best_recall_score = -np.inf
-best_params = None
-best_model = None
-
-best_tprs = []
-best_aucs = []
-best_precisions = []
-best_aps = []
-mean_fpr = np.linspace(0, 1, 100)
-mean_recall = np.linspace(0, 1, 100)
+best_auc = -np.inf  # Initialize best AUC score to determine the best model
+mean_fpr = np.linspace(0, 1, 100)  # Common FPR points for interpolation
+mean_recall = np.linspace(0, 1, 100)  # Common recall points for interpolation
 
 for params in param_combinations:
     # Unpack parameters
@@ -125,8 +117,8 @@ for params in param_combinations:
     )
     
     # Initialize scores for this parameter combination
-    f1_scores, precision_scores, recall_scores = [], [], []
-    tprs, fprs, aucs, precisions, aps = [], [], [], [], []
+    f1_scores, precision_scores, recall_scores, balanced_accuracy_scores = [], [], [], []
+    interpolated_tprs, fprs, aucs, interpolated_precisions = [], [], [], []
     
     # Perform cross-validation
     for train_index, val_index in cv.split(X_train, y_train):
@@ -146,86 +138,138 @@ for params in param_combinations:
         f1_scores.append(f1_score(y_fold_val, y_fold_pred, average='binary'))
         precision_scores.append(precision_score(y_fold_val, y_fold_pred, average='binary', zero_division=0))
         recall_scores.append(recall_score(y_fold_val, y_fold_pred, average='binary', zero_division=0))
-        
-        # Compute ROC curve, AUC and & interpolate TPR to common FPR points 
+        balanced_accuracy_scores.append(balanced_accuracy_score(y_fold_val, y_fold_pred))
+
+        # Compute AUC
         y_fold_proba = pipeline.predict_proba(X_fold_val)[:, 1]  # Probability estimates for the positive class
         fpr, tpr, _ = roc_curve(y_fold_val, y_fold_proba)
         auc_score = auc(fpr, tpr)
         aucs.append(auc_score)
         
-        interp_tpr = np.interp(mean_fpr, fpr, tpr)
-        interp_tpr[0] = 0.0  # Ensure TPR starts at 0
-        tprs.append(interp_tpr)
+        # Interpolate TPR to common FPR points for ROC curve
+        interpolated_tpr = np.interp(mean_fpr, fpr, tpr)
+        interpolated_tpr[0] = 0.0
+        interpolated_tprs.append(interpolated_tpr)
         fprs.append(fpr)
         
         # Compute Precision-Recall curve
         precision, recall, _ = precision_recall_curve(y_fold_val, y_fold_proba)
-        ap_score = average_precision_score(y_fold_val, y_fold_proba)  # Average precision
-        aps.append(ap_score)
         
-        interp_precision = np.interp(mean_recall, recall[::-1], precision[::-1])  # Reverse order of recall and precision to align with mean_recall
-        precisions.append(interp_precision)
+        interpolated_precision = np.interp(mean_recall, recall[::-1], precision[::-1])  # Reverse order of recall and precision to align with mean_recall
+        interpolated_precisions.append(interpolated_precision)
         
-        print(f"Fold f1-score: {f1_scores[-1]:.4f}, precision: {precision_scores[-1]:.4f}, recall: {recall_scores[-1]:.4f}, AUC: {auc_score:.4f}, AP: {ap_score:.4f}")
+        print(f"Balance: {len(y_fold_train_inliers[y_fold_train_inliers==1])/len(y_fold_train_inliers):.2f}, fold f1-score: {f1_scores[-1]:.4f}, precision: {precision_scores[-1]:.4f}, recall: {recall_scores[-1]:.4f}, balanced accuracy: {balanced_accuracy_scores[-1]:.4f}, AUC: {auc_score:.4f}")
 
     # Compute average scores
     avg_f1 = np.mean(f1_scores)
     avg_precision = np.mean(precision_scores)
     avg_recall = np.mean(recall_scores)
     avg_auc = np.mean(aucs)
-    avg_ap = np.mean(aps)
-    print(f"Params: {params} => Avg F1: {avg_f1:.4f}, Avg Precision: {avg_precision:.4f}, Avg Recall: {avg_recall:.4f}, Avg AUC: {avg_auc:.4f}, Avg AP: {avg_ap:.4f}")
+    avg_balanced_accuracy = np.mean(balanced_accuracy_scores)
+    print(f"Params: {params} => Avg F1: {avg_f1:.4f}, Avg Precision: {avg_precision:.4f}, Avg Recall: {avg_recall:.4f}, Avg AUC: {avg_auc:.4f}, Avg Balanced Accuracy: {avg_balanced_accuracy:.4f}")
     
     # Update best scores and parameters
-    if avg_f1 > best_f1_score:
+    if avg_auc > best_auc:
+        best_auc = avg_auc
         best_f1_score = avg_f1
         best_precision_score = avg_precision
         best_recall_score = avg_recall
+        best_balanced_accuracy_score = avg_balanced_accuracy
+        best_interpolated_tprs = interpolated_tprs
+        best_interpolated_precisions = interpolated_precisions
         best_params = params
-        best_model = pipeline
-        best_tprs = tprs
-        best_aucs = aucs
-        best_precisions = precisions
-        best_aps = aps
 
 # Output the best parameters and scores
-print("Best F1 Score:", best_f1_score)
-print("Best Precision Score:", best_precision_score)
-print("Best Recall Score:", best_recall_score)
+print("Best Averaged AUC Score:", best_auc)
+print("Best Averaged F1 Score:", best_f1_score)
+print("Best Averaged Precision Score:", best_precision_score)
+print("Best Averaged Recall Score:", best_recall_score)
+print("Best Averaged Balanced Accuracy Score:", best_balanced_accuracy_score)
 print("Best Parameters:", best_params)
-print("Best Mean AUC:", np.mean(best_aucs))
-print("Best Mean AP:", np.mean(best_aps))
 
+# Cross validation results visualization
 # Plot ROC curve for the best model
-mean_tpr = np.mean(best_tprs, axis=0)
+mean_tpr = np.mean(best_interpolated_tprs, axis=0)
 mean_tpr[-1] = 1.0
 mean_auc = auc(mean_fpr, mean_tpr)
-std_tpr = np.std(best_tprs, axis=0)
+std_tpr = np.std(best_interpolated_tprs, axis=0)
 
 plt.figure(figsize=(8, 6))
 plt.plot(mean_fpr, mean_tpr, color='b', label=f'Mean ROC (AUC = {mean_auc:.2f})', lw=2)
 plt.fill_between(mean_fpr, mean_tpr - std_tpr, mean_tpr + std_tpr, color='b', alpha=0.2, label='±1 std. dev.')
 plt.plot([0, 1], [0, 1], color='gray', linestyle='--', lw=2, label='Random Classifier')
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
+plt.xlim([-0.05, 1.05])
+plt.ylim([-0.05, 1.05])
 plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
-plt.title('Mean ROC Curve Across Folds (Best Model)')
+plt.title('Mean ROC Across Folds (Best Model)')
 plt.legend(loc='lower right')
 plt.show()
 
 # Plot Precision-Recall curve for the best model
-mean_precision = np.mean(best_precisions, axis=0)
-mean_ap = np.mean(best_aps)
-std_precision = np.std(best_precisions, axis=0)
+mean_interpolated_precision = np.mean(best_interpolated_precisions, axis=0)
+std_interpolated_precision = np.std(best_interpolated_precisions, axis=0)
 
 plt.figure(figsize=(8, 6))
-plt.plot(mean_recall, mean_precision, color='b', label=f'Mean PR (AP = {mean_ap:.2f})', lw=2)
-plt.fill_between(mean_recall, mean_precision - std_precision, mean_precision + std_precision, color='b', alpha=0.2, label='±1 std. dev.')
-plt.xlim([0.0, 1.0])
-plt.ylim([0.0, 1.05])
+plt.plot(mean_recall, mean_interpolated_precision, color='b', label='Mean PR', lw=2)
+plt.fill_between(mean_recall, mean_interpolated_precision - std_interpolated_precision, mean_interpolated_precision + std_interpolated_precision, color='b', alpha=0.2, label='±1 std. dev.')
+plt.xlim([-0.05, 1.05])
+plt.ylim([-0.05, 1.10])
 plt.xlabel('Recall')
 plt.ylabel('Precision')
-plt.title('Mean Precision-Recall Curve Across Folds (Best Model)')
+plt.title('Mean PR Curve Across Folds (Best Model)')
 plt.legend(loc='lower left')
 plt.show()
+
+# Final held-out test evaluation using best parameters
+pipeline.set_params(
+    oversampling__k_neighbors=best_params[0],
+    clf__C=best_params[1],
+    clf__gamma=best_params[2]
+)
+train_inliers = IQR_OutlierDetection(X_train)
+X_train_inliers = X_train[train_inliers]
+y_train_inliers = y_train[train_inliers]
+pipeline.fit(X_train_inliers, y_train_inliers)
+
+y_test_pred = pipeline.predict(X_test)
+y_test_proba = pipeline.predict_proba(X_test)[:, 1]
+test_f1 = f1_score(y_test, y_test_pred, average='binary')
+test_precision = precision_score(y_test, y_test_pred, average='binary', zero_division=0)
+test_recall = recall_score(y_test, y_test_pred, average='binary', zero_division=0)
+test_specificity = recall_score(y_test, y_test_pred, average='binary', zero_division=0, pos_label=0)
+test_balanced_accuracy = balanced_accuracy_score(y_test, y_test_pred)
+test_ap = average_precision_score(y_test, y_test_proba)
+
+fpr, tpr, _ = roc_curve(y_test, y_test_proba)
+test_auc = auc(fpr, tpr)
+plt.plot(fpr, tpr, color='b', label='Test ROC curve (AUC = {:.2f})'.format(test_auc))
+plt.plot([0, 1], [0, 1], color='gray', linestyle='--', lw=2, label='Random Classifier')
+plt.xlim([-0.05, 1.05])
+plt.ylim([-0.05, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Test ROC')
+plt.legend(loc='lower right')
+plt.show()
+
+precision, recall, _ = precision_recall_curve(y_test, y_test_proba)
+plt.plot(recall, precision, color='b', label='Test PR (AP = {:.2f})'.format(test_ap))
+plt.xlim([-0.05, 1.05])
+plt.ylim([-0.05, 1.05])
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.title('Test PR')
+plt.legend(loc='lower left')
+plt.show()
+
+print("************ Test Results ************")
+print(f"F1 Score: {test_f1:.2f}")
+print(f"Precision Score: {test_precision:.2f}")
+print(f"Recall Score: {test_recall:.2f}")
+print(f"Specificity: {test_specificity:.2f}")
+print(f"Balanced Accuracy Score: {test_balanced_accuracy:.2f}")
+print(f"AUC: {test_auc:.2f}")
+print(f"AP: {test_ap:.2f}")
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_test_pred))
+print("Classification Report:\n", classification_report(y_test, y_test_pred, zero_division=0))

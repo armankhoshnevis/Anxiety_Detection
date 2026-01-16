@@ -7,7 +7,6 @@ from sklearn.model_selection import(
 )
 from sklearn.svm import SVC
 from sklearn.preprocessing import (
-    StandardScaler,
     PowerTransformer
 )
 from sklearn.metrics import(
@@ -48,7 +47,11 @@ ml_df['Anxiety_Category'] = ml_df['Anxiety_Category'].map(anxiety_category_map)
 ml_df['Anxiety_Binary'] = ml_df['Anxiety_Binary'].map(anxiety_binary_map)
 
 # Acoustic Features
-acoustic_features = ml_df.columns[6:]
+metadata_cols = [
+    'SessionID', 'QBF_Name', 'Sex', 'Age', 'Health', 'Health_Binary',
+    'Country', 'GAD7_Total', 'Anxiety_Category', 'Anxiety_Binary'
+]
+acoustic_features = [col for col in ml_df.columns if col not in metadata_cols]
 stddev_features = [col for col in acoustic_features if 'stddev' in col.lower()]
 
 # Data preparation
@@ -77,8 +80,7 @@ def IQR_OutlierDetection(X, lower_quantile=0.025, upper_quantile=0.975):
 
 # Define the pipeline
 pipeline = ImbPipeline([
-    ("yjpt", PowerTransformer(method='yeo-johnson', standardize=False)),
-    ("scaler", StandardScaler()),
+    ("yjpt", PowerTransformer(method='yeo-johnson', standardize=True)),
     ("oversampling", SMOTE(random_state=42)),
     ("clf", SVC(kernel="rbf", probability=True, random_state=42))
 ])

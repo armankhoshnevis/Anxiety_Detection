@@ -118,10 +118,13 @@ for params in param_combinations:
         clf__gamma=clf_gamma
     )
     
-    # Initialize scores for this parameter combination
+    # Initialize metrics storage
     f1_scores, precision_scores, recall_scores, balanced_accuracy_scores = [], [], [], []
-    interpolated_tprs, fprs, aucs, interpolated_precisions = [], [], [], []
+    interpolated_tprs, fprs, aucs = [], [], []
     
+    # Initialize lists to collect true labels and scores for PR curve
+    current_y_true, current_y_scores = [], []
+
     # Perform cross-validation
     for train_index, val_index in cv.split(X_train, y_train):
         X_fold_train, X_fold_val = X_train.iloc[train_index], X_train.iloc[val_index]
@@ -132,18 +135,18 @@ for params in param_combinations:
         X_fold_train_inliers = X_fold_train[mask_inliers]
         y_fold_train_inliers = y_fold_train[mask_inliers]
         
-        # Fit the pipeline
+        # Fit, predict, and score
         pipeline.fit(X_fold_train_inliers, y_fold_train_inliers)
+        y_fold_pred = pipeline.predict(X_fold_val)
+        y_fold_scores = pipeline.decision_function(X_fold_val)
 
         # Evaluate the pipeline
-        y_fold_pred = pipeline.predict(X_fold_val)
         f1_scores.append(f1_score(y_fold_val, y_fold_pred, average='binary'))
         precision_scores.append(precision_score(y_fold_val, y_fold_pred, average='binary', zero_division=0))
         recall_scores.append(recall_score(y_fold_val, y_fold_pred, average='binary', zero_division=0))
         balanced_accuracy_scores.append(balanced_accuracy_score(y_fold_val, y_fold_pred))
 
         # Compute AUC
-        y_fold_scores = pipeline.decision_function(X_fold_val)  # Signed distance to the hyperplane
         fpr, tpr, _ = roc_curve(y_fold_val, y_fold_scores)
         auc_score = auc(fpr, tpr)
         aucs.append(auc_score)
@@ -154,11 +157,9 @@ for params in param_combinations:
         interpolated_tprs.append(interpolated_tpr)
         fprs.append(fpr)
         
-        # Compute Precision-Recall curve
-        precision, recall, _ = precision_recall_curve(y_fold_val, y_fold_scores)
-        
-        interpolated_precision = np.interp(mean_recall, recall[::-1], precision[::-1])  # Reverse order of recall and precision to align with mean_recall
-        interpolated_precisions.append(interpolated_precision)
+        # For future PR curve
+        current_y_true.append(y_fold_val)
+        current_y_scores.append(y_fold_scores)
         
         print(f"Balance: {len(y_fold_train_inliers[y_fold_train_inliers==1])/len(y_fold_train_inliers):.2f}, fold f1-score: {f1_scores[-1]:.4f}, precision: {precision_scores[-1]:.4f}, recall: {recall_scores[-1]:.4f}, balanced accuracy: {balanced_accuracy_scores[-1]:.4f}, AUC: {auc_score:.4f}")
 
@@ -178,8 +179,9 @@ for params in param_combinations:
         best_recall_score = avg_recall
         best_balanced_accuracy_score = avg_balanced_accuracy
         best_interpolated_tprs = interpolated_tprs
-        best_interpolated_precisions = interpolated_precisions
         best_params = params
+        best_y_true = current_y_true
+        best_y_scores = current_y_scores
 
 # Output the best parameters and scores
 print("Best Averaged AUC Score:", best_auc)
@@ -189,7 +191,36 @@ print("Best Averaged Recall Score:", best_recall_score)
 print("Best Averaged Balanced Accuracy Score:", best_balanced_accuracy_score)
 print("Best Parameters:", best_params)
 
-# Cross validation results visualization
+# Plot PR curve for the best model
+fig, ax = plt.subplots(figsize=(8, 6))
+
+# Plot PR curve for folds
+for i in range(len(best_y_true)):
+    y_true_fold = best_y_true[i]
+    y_scores_fold = best_y_scores[i]
+    
+    precision, recall, _ = precision_recall_curve(y_true_fold, y_scores_fold)
+    fold_ap = average_precision_score(y_true_fold, y_scores_fold)
+    
+    ax.plot(recall, precision, lw=1, alpha=0.3, label=f'Fold {i+1} (AP = {fold_ap:.2f})')
+
+# Plot global PR curve
+y_true_global = np.concatenate(best_y_true)
+y_scores_global = np.concatenate(best_y_scores)
+
+precision_global, recall_global, _ = precision_recall_curve(y_true_global, y_scores_global)
+ap_global = average_precision_score(y_true_global, y_scores_global)
+
+ax.plot(recall_global, precision_global, color='b', lw=3, label=f'Micro-Average (AP = {ap_global:.2f})')
+
+ax.set_xlim([-0.05, 1.05])
+ax.set_ylim([-0.05, 1.05])
+ax.set_xlabel('Recall')
+ax.set_ylabel('Precision')
+ax.set_title('Precision-Recall Curve (Best Model)')
+ax.legend(loc="lower right")
+plt.show()
+
 # Plot ROC curve for the best model
 mean_tpr = np.mean(best_interpolated_tprs, axis=0)
 mean_tpr[-1] = 1.0
@@ -206,21 +237,6 @@ plt.xlabel('False Positive Rate')
 plt.ylabel('True Positive Rate')
 plt.title('Mean ROC Across Folds (Best Model)')
 plt.legend(loc='lower right')
-plt.show()
-
-# Plot Precision-Recall curve for the best model
-mean_interpolated_precision = np.mean(best_interpolated_precisions, axis=0)
-std_interpolated_precision = np.std(best_interpolated_precisions, axis=0)
-
-plt.figure(figsize=(8, 6))
-plt.plot(mean_recall, mean_interpolated_precision, color='b', label='Mean PR', lw=2)
-plt.fill_between(mean_recall, mean_interpolated_precision - std_interpolated_precision, mean_interpolated_precision + std_interpolated_precision, color='b', alpha=0.2, label='±1 std. dev.')
-plt.xlim([-0.05, 1.05])
-plt.ylim([-0.05, 1.10])
-plt.xlabel('Recall')
-plt.ylabel('Precision')
-plt.title('Mean PR Curve Across Folds (Best Model)')
-plt.legend(loc='lower left')
 plt.show()
 
 # Final held-out test evaluation using best parameters

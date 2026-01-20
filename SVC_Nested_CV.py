@@ -155,3 +155,6 @@ inner_df = pd.DataFrame([
     }
     for i, est in enumerate(results["estimator"])
 ])
+
+# Save inner cross-validation results to a CSV file
+inner_df.to_csv("inner_cv_results.csv", index=False)

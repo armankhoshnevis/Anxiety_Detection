@@ -40,7 +40,7 @@ X_arr = X.to_numpy()
 y_arr = y.to_numpy()
 
 # Define outlier detection and removal
-def LOF_OutlierRemoval(X, y, n_neighbors=20, contamination=0.05, algorithm='auto', metric='manhattan'):
+def lof_outlier_removal(X, y, n_neighbors=20, contamination=0.05, algorithm='auto', metric='manhattan'):
     X_arr = np.asarray(X)
     y_arr = np.asarray(y)
 
@@ -58,8 +58,8 @@ def LOF_OutlierRemoval(X, y, n_neighbors=20, contamination=0.05, algorithm='auto
     return X_arr[mask_inliers], y_arr[mask_inliers]
 
 # Create sampler for outlier removal
-LOF_Sampler = FunctionSampler(
-    func=LOF_OutlierRemoval,
+lof_sampler = FunctionSampler(
+    func=lof_outlier_removal,
     kw_args={
         'contamination': 0.05,
         'n_neighbors': 20,
@@ -71,7 +71,7 @@ LOF_Sampler = FunctionSampler(
 # Define the pipeline
 pipeline = ImbPipeline([
     ("yjpt", PowerTransformer(method='yeo-johnson', standardize=True)),
-    ("outlier_removal", LOF_Sampler),
+    ("outlier_removal", lof_sampler),
     ("oversampling", SMOTE(k_neighbors=5, random_state=42)),
     ("clf", SVC(probability=False, kernel='rbf', random_state=42)) 
 ])
@@ -142,9 +142,6 @@ outer_df = pd.DataFrame({
     **{m: results[f"test_{m}"] for m in list(scoring.keys())}
 })
 
-# Save aggregated and per-fold outer CV results
-results_summary_df.to_csv("results_summary.csv", index=True)
-outer_df.to_csv("outer_cv_results.csv", index=False)
 inner_df = pd.DataFrame([
     {
         "repeat": (i // OUTER_SPLITS) + 1,
@@ -156,5 +153,6 @@ inner_df = pd.DataFrame([
     for i, est in enumerate(results["estimator"])
 ])
 
-# Save inner cross-validation results to a CSV file
+results_summary_df.to_csv("results_summary.csv", index=True)
+outer_df.to_csv("outer_cv_results.csv", index=False)
 inner_df.to_csv("inner_cv_results.csv", index=False)

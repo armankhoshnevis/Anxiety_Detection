@@ -86,6 +86,9 @@ def LOF_OutlierRemoval(X, y, n_neighbors=20, contamination=0.05, algorithm='auto
     X_arr = np.asarray(X)
     y_arr = np.asarray(y)
 
+    # n_samples = X_arr.shape[0]
+    # n_neighbors = min(n_neighbors, n_samples - 1)
+
     lof = LocalOutlierFactor(
         n_neighbors=n_neighbors,
         contamination=contamination,
@@ -99,14 +102,23 @@ def LOF_OutlierRemoval(X, y, n_neighbors=20, contamination=0.05, algorithm='auto
 
     return X_arr[mask_inliers], y_arr[mask_inliers]
 
-LOF_Sampler = FunctionSampler(func=LOF_OutlierRemoval, kw_args={'contamination': 0.05}, validate=False)
+LOF_Sampler = FunctionSampler(
+    func=LOF_OutlierRemoval,
+    kw_args={
+        'contamination': 0.05,
+        'n_neighbors': 20,
+        'algorithm': 'auto',
+        'metric': 'manhattan'
+    },
+    validate=False
+)
 
 # Define the pipeline
 pipeline = ImbPipeline([
     ("yjpt", PowerTransformer(method='yeo-johnson', standardize=True)),
     ("outlier_removal", LOF_Sampler),
     ("oversampling", SMOTE(k_neighbors=5, random_state=42)),
-    ("clf", SVC(random_state=42))
+    ("clf", SVC(kernel='rbf', random_state=42))
 ])
 
 # Define the parameter grid
@@ -114,14 +126,12 @@ param_grid_rs = {
     'oversampling__k_neighbors': randint(3, 10),
     'clf__C': loguniform(1e-1, 1e6),
     'clf__gamma': loguniform(1e-5, 1e1),
-    'clf__kernel': ['rbf']
 }
 
 param_grid_gs = {
     'oversampling__k_neighbors': [3, 5, 7, 9],
     'clf__C': [1e-2, 1e-1, 1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6],
     'clf__gamma': [1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1e0, 1e1],
-    'clf__kernel': ['rbf']
 }
 
 # Initialize the stratified K-fold cross-validation

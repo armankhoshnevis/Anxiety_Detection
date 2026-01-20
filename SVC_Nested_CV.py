@@ -142,6 +142,9 @@ outer_df = pd.DataFrame({
     **{m: results[f"test_{m}"] for m in list(scoring.keys())}
 })
 
+# Save aggregated and per-fold outer CV results
+results_summary_df.to_csv("results_summary.csv", index=True)
+outer_df.to_csv("outer_cv_results.csv", index=False)
 inner_df = pd.DataFrame([
     {
         "repeat": (i // OUTER_SPLITS) + 1,

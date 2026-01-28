@@ -38,17 +38,12 @@ def get_training_data(countries, tasks, sexes, base_path="Datasets/"):
     
     for country in countries:
         for task in tasks:
-            # Construct file directory
             file_name = f"{base_path}{country}_GAD_eGeMAPS_{task}.csv"
             
             try:
-                # Load the dataset
                 temp_df = pd.read_csv(file_name)
-                # Filter by sex
                 temp_df = temp_df[temp_df["Sex"].isin(sexes)]
-                # Create/Confirm binary anxiety target
                 temp_df["Anxiety_Binary"] = temp_df["GAD7_Total"].apply(lambda x: 1 if x >= 5 else 0)
-                # Append to list
                 df_list.append(temp_df)
             
             except FileNotFoundError:
@@ -59,17 +54,13 @@ def get_training_data(countries, tasks, sexes, base_path="Datasets/"):
     if not df_list:
         raise ValueError("No data loaded. Check your file paths and parameters.")
 
-    # Combine all collected dataframes
     combined_df = pd.concat(df_list, axis=0, ignore_index=True)
 
-    
-    # Define metadata columns to exclude from features
     metadata_cols = [
         "SessionID", "QBF_Name", "JohnFarm_Name", "Sex", "Age", "Health", "Health_Binary",
         "Country", "GAD7_Total", "Anxiety_Category", "Anxiety_Binary"
     ]
     
-    # Prepare features and target
     X = combined_df.drop(columns=metadata_cols, errors='ignore')
     y = combined_df["Anxiety_Binary"]
 
@@ -77,6 +68,19 @@ def get_training_data(countries, tasks, sexes, base_path="Datasets/"):
 
 # Outlier removal using Local Outlier Factor
 def lof_outlier_removal(X, y, n_neighbors=20, contamination=0.05, algorithm='auto', metric='manhattan'):
+    """
+    Removes outliers from the dataset using Local Outlier Factor (LOF).
+    Args:
+        X (numpy array): Feature matrix.
+        y (numpy array): Target vector.
+        n_neighbors (int, optional): Number of neighbors to use. Defaults to 20.
+        contamination (float, optional): Proportion of outliers in the data set. Defaults to 0.05.
+        algorithm (str, optional): Algorithm to compute nearest neighbors. Defaults to 'auto'.
+        metric (str, optional): Distance metric to use. Defaults to 'manhattan'.
+
+    Returns:
+        tuple: Filtered feature matrix and target vector as numpy arrays.
+    """
     X_arr = np.asarray(X)
     y_arr = np.asarray(y)
 
@@ -133,7 +137,7 @@ def param_space(model_name: str) -> dict:
     if model_name == "SVC":
         param_grid = {
             "oversampling__k_neighbors": randint(3, 8),
-            "pca__n_components": uniform(0.5, 0.45),  # Variance explained ratio [0.5, 0.95]
+            "feature_selection__n_components": uniform(0.5, 0.45),  # Variance explained ratio [0.5, 0.95]
             "classifier__C": loguniform(1e-2, 1e6),
             "classifier__gamma": loguniform(1e-5, 1e2),
             "classifier__kernel": ["rbf"],
@@ -159,13 +163,13 @@ def make_data_grid() -> list[dict]:
     countries = ["Botswana", "Ghana", "Nigeria", "Tanzania"]
     tasks_dict = {
         "QBF": ["QBF"],
-        "JohnFarm": ["JohnFarm"],
-        "Both": ["QBF", "JohnFarm"]
+        # "JohnFarm": ["JohnFarm"],
+        # "Both": ["QBF", "JohnFarm"]
     }
     sexes_dict = {
         "Male": ["Male"],
-        "Female": ["Female"],
-        "Both": ["Male", "Female"]
+        # "Female": ["Female"],
+        # "Both": ["Male", "Female"]
     }
 
     grid = []
@@ -287,17 +291,20 @@ def main():
 
         cnfg.update({
             "model_name": model_name,
-            "outer_dir": out_dir,
-            "n_repeats": 5,
+            "out_dir": out_dir,
+            "n_repeats": 6,
             "outer_splits": 5,
             "inner_splits": 5,
             "n_iter": 100,
-            "verbose": 1,
+            "verbose": 2,
             "outer_n_jobs": -1,
             "inner_n_jobs": 1,
         })
 
-        print(f"\n*** Running {model_name} | sex={cnfg['sexes_key']} | task={cnfg['tasks_key']} ***\n")
+        print(
+            f"\n*** Running {cnfg['outer_splits']} outer folds and {cnfg['n_repeats']} repeats "
+            f"for {model_name} | sex={cnfg['sexes_key']} | task={cnfg['tasks_key']} ***\n"
+        )
         run_experiment(cnfg)
 
 if __name__ == "__main__":

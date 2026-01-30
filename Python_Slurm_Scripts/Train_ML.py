@@ -141,8 +141,8 @@ def param_space(model_name: str) -> dict:
         param_grid = {
             "oversampling__k_neighbors": randint(3, 8),
             "feature_selection__n_components": uniform(0.75, 0.20),  # Variance explained ratio [0.75, 0.95]
-            "classifier__C": loguniform(1e-2, 1e6),
-            "classifier__gamma": loguniform(1e-5, 1e2),
+            "classifier__C": loguniform(1e-3, 1e6),
+            "classifier__gamma": loguniform(1e-6, 1e2),
             "classifier__kernel": ["rbf"],
             # "outlier_removal__kw_args": [
             #     {

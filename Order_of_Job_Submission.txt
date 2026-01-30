@@ -1,0 +1,9 @@
+Job Array 0: QBF Male
+Job Array 1: JohnFarm Male
+Job Array 2: Both Male
+Job Array 3: QBF Female
+Job Array 4: JohnFarm Female
+Job Array 5: Both Female
+Job Array 6: QBF Both
+Job Array 7: JohnFarm Both
+Job Array 8: Both Both

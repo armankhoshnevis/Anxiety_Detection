@@ -1,3 +1,6 @@
+# Load libraries
+import os
+import argparse
 import numpy as np
 import pandas as pd
 from scipy.stats import randint, uniform, loguniform
@@ -21,7 +24,7 @@ from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline as ImbPipeline
 
 # Load the data
-def get_training_data(countries, tasks, sexes, base_path="Datasets/"):
+def get_training_data(countries, tasks, sexes, base_path="../Datasets/"):
     """
     Loads and combines data based on selected countries, tasks, and sexes.
     
@@ -137,7 +140,7 @@ def param_space(model_name: str) -> dict:
     if model_name == "SVC":
         param_grid = {
             "oversampling__k_neighbors": randint(3, 8),
-            "feature_selection__n_components": uniform(0.5, 0.45),  # Variance explained ratio [0.5, 0.95]
+            "feature_selection__n_components": uniform(0.75, 0.20),  # Variance explained ratio [0.75, 0.95]
             "classifier__C": loguniform(1e-2, 1e6),
             "classifier__gamma": loguniform(1e-5, 1e2),
             "classifier__kernel": ["rbf"],
@@ -163,13 +166,13 @@ def make_data_grid() -> list[dict]:
     countries = ["Botswana", "Ghana", "Nigeria", "Tanzania"]
     tasks_dict = {
         "QBF": ["QBF"],
-        # "JohnFarm": ["JohnFarm"],
-        # "Both": ["QBF", "JohnFarm"]
+        "JohnFarm": ["JohnFarm"],
+        "Both": ["QBF", "JohnFarm"]
     }
     sexes_dict = {
         "Male": ["Male"],
-        # "Female": ["Female"],
-        # "Both": ["Male", "Female"]
+        "Female": ["Female"],
+        "Both": ["Male", "Female"]
     }
 
     grid = []
@@ -251,7 +254,9 @@ def run_experiment(cnfg: dict):
     out_dir = cnfg["out_dir"]
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    results_df = pd.DataFrame(results).sort_values(by="test_roc_auc", ascending=False)
+    
+    results_df = pd.DataFrame({k: v for k, v in results.items() if k != "estimator"}) \
+    .sort_values(by="test_roc_auc", ascending=False)
     results_df["best_params"] = [est.best_params_ for est in results["estimator"]]
     results_df.to_csv(out_dir / "results.csv", index=False)
 
@@ -282,30 +287,48 @@ def run_experiment(cnfg: dict):
     inner_df.to_csv(out_dir / "inner_cv_results.csv", index=False)
 
 def main():
-    base_dir = Path("Results")
-    model_name = "SVC"
-
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--case_id", type=int, default=None, help="0: QBF/M, 1: JF/M, etc.")
+    parser.add_argument("--model_name", type=str, default="SVC")
+    parser.add_argument("--n_repeats", type=int, default=7)
+    parser.add_argument("--outer_splits", type=int, default=5)
+    parser.add_argument("--inner_splits", type=int, default=5)
+    parser.add_argument("--n_iter", type=int, default=100)
+    parser.add_argument("--verbose", type=int, default=2)
+    parser.add_argument("--outer_n_jobs", type=int, default=-1)
+    parser.add_argument("--inner_n_jobs", type=int, default=1)
+    args = parser.parse_args()
+    
+    # Get and set data configuration
     cnfgs = make_data_grid()
-    for cnfg in cnfgs:
-        out_dir = base_dir / model_name / f"sex={cnfg['sexes_key']}" / f"task={cnfg['tasks_key']}"
+    if args.case_id is not None:
+        case_id = args.case_id
+    else:
+        case_id = int(os.environ.get("SLURM_ARRAY_TASK_ID", "0"))
+    cnfg = cnfgs[case_id]
 
-        cnfg.update({
-            "model_name": model_name,
-            "out_dir": out_dir,
-            "n_repeats": 6,
-            "outer_splits": 5,
-            "inner_splits": 5,
-            "n_iter": 100,
-            "verbose": 2,
-            "outer_n_jobs": -1,
-            "inner_n_jobs": 1,
-        })
+    # Set base directory for results
+    base_dir = Path("../Results")
+    out_dir = base_dir / args.model_name / f"sex={cnfg['sexes_key']}" / f"task={cnfg['tasks_key']}"
 
-        print(
-            f"\n*** Running {cnfg['outer_splits']} outer folds and {cnfg['n_repeats']} repeats "
-            f"for {model_name} | sex={cnfg['sexes_key']} | task={cnfg['tasks_key']} ***\n"
-        )
-        run_experiment(cnfg)
+    cnfg.update({
+        "model_name": args.model_name,
+        "out_dir": out_dir,
+        "n_repeats": args.n_repeats,
+        "outer_splits": args.outer_splits,
+        "inner_splits": args.inner_splits,
+        "n_iter": args.n_iter,
+        "verbose": args.verbose,
+        "outer_n_jobs": args.outer_n_jobs,
+        "inner_n_jobs": args.inner_n_jobs,
+    })
+
+    print(
+        f"\n*** Running {cnfg['outer_splits']} outer folds and {cnfg['n_repeats']} repeats "
+        f"for {args.model_name} | sex={cnfg['sexes_key']} | task={cnfg['tasks_key']} ***\n"
+    )
+    run_experiment(cnfg)
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,7 @@
-# Slurm output files
+# Slurm files
 *.out
 *.err
+*.sh
 
 # CSV files
 *.csv

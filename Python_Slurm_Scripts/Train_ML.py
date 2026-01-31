@@ -273,11 +273,13 @@ def run_experiment(cnfg: dict):
     out_dir.mkdir(parents=True, exist_ok=True)
 
     
-    results_df = pd.DataFrame({k: v for k, v in results.items() if k != "estimator"}) \
-    .sort_values(by="test_roc_auc", ascending=False)
+    results_df = pd.DataFrame({k: v for k, v in results.items() if k != "estimator"})
     results_df["best_params"] = [est.best_params_ for est in results["estimator"]]
+    params_df = results_df["best_params"].apply(pd.Series)
+    results_df = pd.concat([results_df.drop(columns=["best_params"]), params_df], axis=1)
+    results_df = results_df.sort_values("test_roc_auc", ascending=False)
     results_df.to_csv(out_dir / "results.csv", index=False)
-
+    
     results_summary_df = pd.DataFrame({
         m: results[f"test_{m}"] for m in list(scoring.keys())
     }).agg(["mean", "std"]).T

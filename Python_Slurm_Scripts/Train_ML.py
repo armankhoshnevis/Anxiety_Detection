@@ -18,6 +18,7 @@ from sklearn.model_selection import (
     cross_validate
 )
 from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
 
 from imblearn import FunctionSampler
 from imblearn.over_sampling import SMOTE
@@ -117,15 +118,22 @@ def build_pipeline(model_name: str) -> ImbPipeline:
         validate=False,
     )
 
-    steps = [
-        ("yjpt", PowerTransformer(method="yeo-johnson", standardize=True)),
-        ("outlier_removal", lof_sampler),
-        ("feature_selection", PCA(svd_solver="full")),
-        ("oversampling", SMOTE(random_state=42)),
-    ]
-
     if model_name == "SVC":
+        steps = [
+            ("yjpt", PowerTransformer(method="yeo-johnson", standardize=True)),
+            ("outlier_removal", lof_sampler),
+            ("feature_selection", PCA(svd_solver="full")),
+            ("oversampling", SMOTE(random_state=42)),
+        ]
         clf = SVC(probability=False, random_state=42)
+        steps.append(("classifier", clf))
+    elif model_name == "DT":
+        steps = [
+            ("yjpt", PowerTransformer(method="yeo-johnson", standardize=True)),
+            ("outlier_removal", lof_sampler),
+            ("oversampling", SMOTE(random_state=42)),
+        ]
+        clf = DecisionTreeClassifier(random_state=42)
         steps.append(("classifier", clf))
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")
@@ -153,6 +161,16 @@ def param_space(model_name: str) -> dict:
             #     }
             #     for c in [0.025, 0.05, 0.075, 0.1]
             # ]
+        }
+        return param_grid
+    elif model_name == "DT":
+        param_grid = {
+            "oversampling__k_neighbors": randint(3, 8),
+            "classifier__max_depth": randint(3, 20),
+            "classifier__max_features": ["sqrt", "log2", None],
+            "classifier__min_samples_split": uniform(0.05, 0.35),  # Fraction [0.05, 0.4]
+            "classifier__min_samples_leaf": uniform(0.01, 0.09),  # Fraction [0.01, 0.1]
+            "classifier__ccp_alpha": loguniform(1e-6, 1e-1),
         }
         return param_grid
     else:
@@ -295,7 +313,7 @@ def main():
     parser.add_argument("--outer_splits", type=int, default=5)
     parser.add_argument("--inner_splits", type=int, default=5)
     parser.add_argument("--n_iter", type=int, default=100)
-    parser.add_argument("--verbose", type=int, default=2)
+    parser.add_argument("--verbose", type=int, default=1)
     parser.add_argument("--outer_n_jobs", type=int, default=-1)
     parser.add_argument("--inner_n_jobs", type=int, default=1)
     args = parser.parse_args()

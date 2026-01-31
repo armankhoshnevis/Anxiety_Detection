@@ -250,7 +250,7 @@ def run_experiment(cnfg: dict):
         scoring="roc_auc",
         n_jobs=cnfg["inner_n_jobs"],
         cv=inner_cv,
-        verbose=cnfg["verbose"],
+        verbose=cnfg["inner_verbose"],
         random_state=42,
         refit=True
     )
@@ -264,7 +264,7 @@ def run_experiment(cnfg: dict):
         scoring=scoring,
         return_estimator=True,
         n_jobs=cnfg["outer_n_jobs"],
-        verbose=cnfg["verbose"]
+        verbose=cnfg["outer_verbose"]
     )
 
     # Save results
@@ -314,7 +314,8 @@ def main():
     parser.add_argument("--outer_splits", type=int, default=5)
     parser.add_argument("--inner_splits", type=int, default=5)
     parser.add_argument("--n_iter", type=int, default=100)
-    parser.add_argument("--verbose", type=int, default=1)
+    parser.add_argument("--outer_verbose", type=int, default=10)
+    parser.add_argument("--inner_verbose", type=int, default=1)
     parser.add_argument("--outer_n_jobs", type=int, default=-1)
     parser.add_argument("--inner_n_jobs", type=int, default=1)
     args = parser.parse_args()
@@ -338,7 +339,8 @@ def main():
         "outer_splits": args.outer_splits,
         "inner_splits": args.inner_splits,
         "n_iter": args.n_iter,
-        "verbose": args.verbose,
+        "outer_verbose": args.outer_verbose,
+        "inner_verbose": args.inner_verbose,
         "outer_n_jobs": args.outer_n_jobs,
         "inner_n_jobs": args.inner_n_jobs,
     })

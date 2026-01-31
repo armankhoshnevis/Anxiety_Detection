@@ -270,7 +270,6 @@ def run_experiment(cnfg: dict):
     # Save results
     out_dir = cnfg["out_dir"]
     out_dir.mkdir(parents=True, exist_ok=True)
-
     
     results_df = pd.DataFrame({k: v for k, v in results.items() if k != "estimator"})
     results_df["best_params"] = [est.best_params_ for est in results["estimator"]]

@@ -117,26 +117,24 @@ def build_pipeline(model_name: str) -> ImbPipeline:
         },
         validate=False,
     )
-
+    
     if model_name == "SVC":
-        steps = [
-            ("yjpt", PowerTransformer(method="yeo-johnson", standardize=True)),
-            ("outlier_removal", lof_sampler),
-            ("feature_selection", PCA(svd_solver="full")),
-            ("oversampling", SMOTE(random_state=42)),
-        ]
+        feature_step = PCA(svd_solver="full")
         clf = SVC(probability=False, random_state=42)
-        steps.append(("classifier", clf))
     elif model_name == "DT":
-        steps = [
-            ("yjpt", PowerTransformer(method="yeo-johnson", standardize=True)),
-            ("outlier_removal", lof_sampler),
-            ("oversampling", SMOTE(random_state=42)),
-        ]
+        # feature_step = "passthrough"
+        feature_step = PCA(svd_solver="full")
         clf = DecisionTreeClassifier(random_state=42)
-        steps.append(("classifier", clf))
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")
+
+    steps = [
+        ("yjpt", PowerTransformer(method="yeo-johnson", standardize=True)),
+        ("outlier_removal", lof_sampler),
+        ("feature_selection", feature_step),
+        ("oversampling", SMOTE(random_state=42)),
+        ("classifier", clf),
+    ]
 
     return ImbPipeline(steps=steps)
 
@@ -166,6 +164,7 @@ def param_space(model_name: str) -> dict:
     elif model_name == "DT":
         param_grid = {
             "oversampling__k_neighbors": randint(3, 8),
+            "feature_selection__n_components": uniform(0.75, 0.20),
             "classifier__max_depth": randint(3, 20),
             "classifier__max_features": ["sqrt", "log2", None],
             "classifier__min_samples_split": uniform(0.05, 0.35),  # Fraction [0.05, 0.4]

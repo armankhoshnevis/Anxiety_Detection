@@ -19,6 +19,7 @@ from sklearn.model_selection import (
 )
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 
 from imblearn import FunctionSampler
 from imblearn.over_sampling import SMOTE
@@ -125,6 +126,9 @@ def build_pipeline(model_name: str) -> ImbPipeline:
         # feature_step = "passthrough"
         feature_step = PCA(svd_solver="full")
         clf = DecisionTreeClassifier(random_state=42)
+    elif model_name == "RF":
+        feature_step = "passthrough"
+        clf = RandomForestClassifier(random_state=42, n_jobs=1)
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")
 
@@ -169,6 +173,17 @@ def param_space(model_name: str) -> dict:
             "classifier__max_features": ["sqrt", "log2", None],
             "classifier__min_samples_split": uniform(0.05, 0.35),  # Fraction [0.05, 0.4]
             "classifier__min_samples_leaf": uniform(0.01, 0.09),  # Fraction [0.01, 0.1]
+            "classifier__ccp_alpha": loguniform(1e-6, 1e-1),
+        }
+        return param_grid
+    elif model_name == "RF":
+        param_grid = {
+            "oversampling__k_neighbors": randint(3, 8),
+            "classifier__n_estimators": randint(200, 1001),
+            "classifier__max_depth": randint(3, 20),
+            "classifier__max_features": ["sqrt", "log2", 0.2, 0.3, 0.4, None],
+            "classifier__min_samples_split": uniform(0.05, 0.45),
+            "classifier__min_samples_leaf": uniform(0.01, 0.19),
             "classifier__ccp_alpha": loguniform(1e-6, 1e-1),
         }
         return param_grid
@@ -308,8 +323,8 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--case_id", type=int, default=None, help="0: QBF/M, 1: JF/M, etc.")
-    parser.add_argument("--model_name", type=str, default="SVC")
-    parser.add_argument("--n_repeats", type=int, default=7)
+    parser.add_argument("--model_name", type=str, default="SVC", choices=["SVC", "DT", "RF"])
+    parser.add_argument("--n_repeats", type=int, default=5)
     parser.add_argument("--outer_splits", type=int, default=5)
     parser.add_argument("--inner_splits", type=int, default=5)
     parser.add_argument("--n_iter", type=int, default=100)

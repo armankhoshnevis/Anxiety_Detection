@@ -12,8 +12,7 @@ from sklearn.preprocessing import PowerTransformer
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.decomposition import PCA
 from sklearn.model_selection import (
-    StratifiedKFold,
-    RepeatedStratifiedKFold,
+    StratifiedGroupKFold,
     RandomizedSearchCV,
     cross_validate
 )
@@ -41,6 +40,7 @@ def get_training_data(countries, tasks, sexes, base_path="../Datasets/"):
     
     Returns:
     - X_arr, y_arr: Numpy arrays for features and target
+    - groups: Numpy array of participant SessionIDs
     """
     
     df_list = []
@@ -70,10 +70,11 @@ def get_training_data(countries, tasks, sexes, base_path="../Datasets/"):
         "Country", "GAD7_Total", "Anxiety_Category", "Anxiety_Binary"
     ]
     
-    X = combined_df.drop(columns=metadata_cols, errors='ignore')
-    y = combined_df["Anxiety_Binary"]
+    groups = combined_df["SessionID"].astype(str).to_numpy()
+    X = combined_df.drop(columns=metadata_cols, errors='ignore').to_numpy()
+    y = combined_df["Anxiety_Binary"].to_numpy()
 
-    return X.to_numpy(), y.to_numpy()
+    return X, y, groups
 
 # Outlier removal using Local Outlier Factor
 def lof_outlier_removal(X, y, n_neighbors=20, contamination=0.05, algorithm='auto', metric='manhattan'):
@@ -254,7 +255,7 @@ def run_experiment(cnfg: dict):
     Runs nested cross-validation with hyperparameter tuning and saves the results.
     """
     # Load data
-    X, y = get_training_data(
+    X, y, groups = get_training_data(
         countries=cnfg["countries"],
         tasks=cnfg["tasks"],
         sexes=cnfg["sexes"]
@@ -275,12 +276,16 @@ def run_experiment(cnfg: dict):
     param_distributions = param_space(model_name=cnfg["model_name"])
 
     # Setup cross-validation
-    outer_cv = RepeatedStratifiedKFold(
-        n_splits=cnfg["outer_splits"],
-        n_repeats=cnfg["n_repeats"],
-        random_state=42
-    )
-    inner_cv = StratifiedKFold(
+    outer_splits = []
+    for i in range(cnfg["n_repeats"]):
+        sgkf = StratifiedGroupKFold(
+            n_splits=cnfg["outer_splits"],
+            shuffle=True,
+            random_state=42+i
+        )
+        outer_splits.extend(list(sgkf.split(X, y, groups)))
+    
+    inner_cv = StratifiedGroupKFold(
         n_splits=cnfg["inner_splits"],
         shuffle=True,
         random_state=42
@@ -304,7 +309,8 @@ def run_experiment(cnfg: dict):
         search,
         X=X,
         y=y,
-        cv=outer_cv,
+        params={'groups': groups},
+        cv=outer_splits,
         scoring=scoring,
         return_estimator=True,
         n_jobs=cnfg["outer_n_jobs"],
@@ -318,6 +324,10 @@ def run_experiment(cnfg: dict):
     results_df = pd.DataFrame({k: v for k, v in results.items() if k != "estimator"})
     results_df["best_params"] = [est.best_params_ for est in results["estimator"]]
     params_df = results_df["best_params"].apply(pd.Series)
+    if cnfg["model_name"] == "GB":
+        params_df["classifier__n_estimators"] = [
+            est.best_estimator_.named_steps["classifier"].n_estimators_ for est in results["estimator"]
+        ]
     results_df = pd.concat([results_df.drop(columns=["best_params"]), params_df], axis=1)
     results_df = results_df.sort_values("test_roc_auc", ascending=False)
     results_df.to_csv(out_dir / "results.csv", index=False)

@@ -17,9 +17,13 @@ from sklearn.model_selection import (
     RandomizedSearchCV,
     cross_validate
 )
+
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import (
+    RandomForestClassifier,
+    GradientBoostingClassifier
+)
 
 from imblearn import FunctionSampler
 from imblearn.over_sampling import SMOTE
@@ -128,7 +132,21 @@ def build_pipeline(model_name: str) -> ImbPipeline:
         clf = DecisionTreeClassifier(random_state=42)
     elif model_name == "RF":
         feature_step = "passthrough"
-        clf = RandomForestClassifier(random_state=42, n_jobs=1)
+        clf = RandomForestClassifier(
+            class_weight=None,
+            n_jobs=1,
+            random_state=42,
+            )
+    elif model_name == "GB":
+        # feature_step = "passthrough"
+        feature_step = PCA(svd_solver="full")
+        clf = GradientBoostingClassifier(
+            n_estimators=1500,
+            n_iter_no_change=10,
+            tol=0.0001,
+            validation_fraction=0.10,
+            random_state=42,
+        )
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")
 
@@ -149,7 +167,7 @@ def param_space(model_name: str) -> dict:
     """
     if model_name == "SVC":
         param_grid = {
-            "oversampling__k_neighbors": randint(3, 8),
+            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
             "feature_selection__n_components": uniform(0.75, 0.20),  # Variance explained ratio [0.75, 0.95]
             "classifier__C": loguniform(1e-3, 1e6),
             "classifier__gamma": loguniform(1e-6, 1e2),
@@ -167,9 +185,9 @@ def param_space(model_name: str) -> dict:
         return param_grid
     elif model_name == "DT":
         param_grid = {
-            "oversampling__k_neighbors": randint(3, 8),
-            "feature_selection__n_components": uniform(0.75, 0.20),
-            "classifier__max_depth": randint(3, 20),
+            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "feature_selection__n_components": uniform(0.75, 0.20),  # [0.75, 0.95]
+            "classifier__max_depth": randint(3, 20),  # [3, 19]
             "classifier__max_features": ["sqrt", "log2", None],
             "classifier__min_samples_split": uniform(0.05, 0.35),  # Fraction [0.05, 0.4]
             "classifier__min_samples_leaf": uniform(0.01, 0.09),  # Fraction [0.01, 0.1]
@@ -178,13 +196,24 @@ def param_space(model_name: str) -> dict:
         return param_grid
     elif model_name == "RF":
         param_grid = {
-            "oversampling__k_neighbors": randint(3, 8),
-            "classifier__n_estimators": randint(200, 1001),
-            "classifier__max_depth": randint(3, 20),
+            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "classifier__n_estimators": randint(200, 1001),  # [200, 1000]
+            "classifier__max_depth": randint(3, 20),  # [3, 19]
             "classifier__max_features": ["sqrt", "log2", 0.2, 0.3, 0.4, None],
-            "classifier__min_samples_split": uniform(0.05, 0.45),
-            "classifier__min_samples_leaf": uniform(0.01, 0.19),
+            "classifier__min_samples_split": uniform(0.05, 0.45),  # [0.05, 0.5]
+            "classifier__min_samples_leaf": uniform(0.01, 0.19),  # [0.01, 0.2]
             "classifier__ccp_alpha": loguniform(1e-6, 1e-1),
+        }
+        return param_grid
+    elif model_name == "GB":
+        param_grid = {
+            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "classifier__learning_rate": loguniform(1e-4, 1e-1),
+            "classifier__max_depth": randint(3, 8),  # [3, 7]
+            "classifier__max_features": ["sqrt", "log2", 0.2, 0.3, 0.4, None],
+            "classifier__min_samples_split": uniform(0.05, 0.30),  # [0.05, 0.35]
+            "classifier__min_samples_leaf": uniform(0.01, 0.09),  # [0.01, 0.1]
+            "classifier__subsample": uniform(0.75, 0.25),  # [0.75, 1.0]
         }
         return param_grid
     else:
@@ -323,7 +352,7 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--case_id", type=int, default=None, help="0: QBF/M, 1: JF/M, etc.")
-    parser.add_argument("--model_name", type=str, default="SVC", choices=["SVC", "DT", "RF"])
+    parser.add_argument("--model_name", type=str, default="SVC", choices=["SVC", "DT", "RF", "GB"])
     parser.add_argument("--n_repeats", type=int, default=5)
     parser.add_argument("--outer_splits", type=int, default=5)
     parser.add_argument("--inner_splits", type=int, default=5)

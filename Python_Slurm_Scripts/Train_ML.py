@@ -6,6 +6,10 @@ import pandas as pd
 
 from pathlib import Path
 
+from tempfile import mkdtemp
+from shutil import rmtree
+from joblib import Memory
+
 from sklearn.model_selection import (
     StratifiedGroupKFold,
     RandomizedSearchCV,
@@ -36,7 +40,9 @@ def run_experiment(cnfg: dict):
     }
 
     # Build pipeline
-    pipeline = build_pipeline(model_name=cnfg["model_name"])
+    cachedir = mkdtemp()
+    memory = Memory(location=cachedir, verbose=0)
+    pipeline = build_pipeline(model_name=cnfg["model_name"], memory=memory)
 
     # Get hyperparameter space
     param_distributions = param_space(model_name=cnfg["model_name"])
@@ -125,6 +131,9 @@ def run_experiment(cnfg: dict):
         for i, est in enumerate(results["estimator"])
     ])
     inner_df.to_csv(out_dir / "inner_cv_results.csv", index=False)
+
+    # Clean up temporary cache
+    rmtree(cachedir)
 
 def main():
     # Parse command-line arguments

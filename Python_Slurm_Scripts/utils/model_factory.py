@@ -18,7 +18,7 @@ from imblearn.pipeline import Pipeline as ImbPipeline
 from .preprocessing import lof_outlier_removal, mi_score_func
 
 # Build the machine learning pipeline
-def build_pipeline(model_name: str) -> ImbPipeline:
+def build_pipeline(model_name: str, memory=None) -> ImbPipeline:
     """
     Builds a machine learning pipeline with preprocessing, outlier removal, feature selection,
     oversampling, and classification steps.
@@ -71,8 +71,8 @@ def build_pipeline(model_name: str) -> ImbPipeline:
         ("oversampling", SMOTE(random_state=42)),
         ("classifier", clf),
     ]
-
-    return ImbPipeline(steps=steps)
+    
+    return ImbPipeline(steps=steps, memory=memory)
 
 # Define hyperparameter search space
 def param_space(model_name: str) -> dict:

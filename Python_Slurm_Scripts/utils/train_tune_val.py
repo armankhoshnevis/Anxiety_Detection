@@ -96,7 +96,7 @@ def run_experiment(cnfg: dict):
         save_results(cnfg, results, scoring)
         
         # Compute SHAP values across all outer folds
-        _, _, shap_df_avg = compute_fold_shap(outer_splits, results, cnfg["model_name"], X, y)
+        _, _, shap_df_avg = compute_fold_shap(outer_splits, results, cnfg["model_name"], X, y, cnfg)
 
         # Plot SHAP summary
         plot_shap_summary(shap_df_avg, X, cnfg)

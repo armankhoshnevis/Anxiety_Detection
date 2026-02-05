@@ -56,7 +56,24 @@ def save_results(cnfg, results, scoring):
     ])
     inner_df.to_csv(out_dir / "inner_cv_results.csv", index=False)
 
-def compute_fold_shap(outer_splits, results, model_name, X, y):
+def compute_fold_shap(outer_splits, results, model_name, X, y, cnfg):
+    """Compute SHAP values per outer fold and tuned model
+
+    Args:
+        outer_splits (list): List of outer fold train/validation indices.
+        results (dict): Dictionary containing results and estimators from inner cv.
+        model_name (str): Name of the model used.
+        X (pd.DataFrame): Feature data.
+        y (pd.Series): Target data.
+        cnfg (dict): Configuration dictionary.
+
+    Raises:
+        ValueError: If the model_name is unsupported for SHAP computation.
+
+    Returns:
+        tuple: A tuple containing a list of SHAP dataframes for each fold, a dataframe of all SHAP values, and a dataframe of average SHAP values.
+    """
+
     all_shap_dfs = []
     for fold_idx, ((train_idx, val_idx), search_estimator) in enumerate(zip(outer_splits, results['estimator'])):
         search_estimator = results['estimator'][fold_idx]
@@ -78,7 +95,7 @@ def compute_fold_shap(outer_splits, results, model_name, X, y):
             X_val_trans_sampled = X_val_trans.copy()
             background = X_train_trans.copy()
         else:
-            X_val_trans_sampled = X_val_trans.sample(n=int(np.floor(len(X_val_trans)/2)), random_state=42).reset_index(drop=True)
+            X_val_trans_sampled = X_val_trans.sample(n=int(np.floor(len(X_val_trans)/3)), random_state=42).reset_index(drop=True)
             background = shap.kmeans(X_train_trans, 50)
 
         if model_name in ["DT", "RF"]:
@@ -103,6 +120,10 @@ def compute_fold_shap(outer_splits, results, model_name, X, y):
     
     total_shap_df = pd.concat(all_shap_dfs, axis=0)
     shap_df_avg = total_shap_df.groupby(total_shap_df.index).mean()
+
+    shap_df_avg.to_csv(f"{cnfg['out_dir']}/shap_values_avg_{cnfg['model_name']}.csv")
+    total_shap_df.to_csv(f"{cnfg['out_dir']}/shap_values_all_{cnfg['model_name']}.csv")
+    shap_df_avg.to_csv(f"{cnfg['out_dir']}/shap_values_avg_{cnfg['model_name']}.csv")
 
     return all_shap_dfs, total_shap_df, shap_df_avg
 

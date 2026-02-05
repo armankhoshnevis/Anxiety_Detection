@@ -12,8 +12,9 @@ def get_training_data(countries, tasks, sexes, base_path="../Datasets/"):
     - sexes: List of strings (e.g., ["Male"] or ["Male", "Female"])
     
     Returns:
-    - X_arr, y_arr: Numpy arrays for features and target
-    - groups: Numpy array of participant SessionIDs
+    - X (pandas DataFrame): Feature matrix
+    - y (pandas Series): Target vector
+    - groups (numpy array): Participant SessionIDs
     """
     
     df_list = []
@@ -44,8 +45,8 @@ def get_training_data(countries, tasks, sexes, base_path="../Datasets/"):
     ]
     
     groups = combined_df["SessionID"].astype(str).to_numpy()
-    X = combined_df.drop(columns=metadata_cols, errors='ignore').to_numpy()
-    y = combined_df["Anxiety_Binary"].to_numpy()
+    X = combined_df.drop(columns=metadata_cols, errors='ignore')
+    y = combined_df["Anxiety_Binary"]
 
     return X, y, groups
 

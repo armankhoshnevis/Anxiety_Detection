@@ -11,7 +11,7 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--case_id", type=int, default=None, help="0: QBF/M, 1: JF/M, etc.")
-    parser.add_argument("--model_name", type=str, default="SVC", choices=["SVC", "DT", "RF", "GB"])
+    parser.add_argument("--model_name", type=str, default="SVC", choices=["SVC", "DT", "RF", "GB", "XGB"])
     parser.add_argument("--n_repeats", type=int, default=5)
     parser.add_argument("--outer_splits", type=int, default=5)
     parser.add_argument("--inner_splits", type=int, default=5)

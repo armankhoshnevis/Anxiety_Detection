@@ -10,6 +10,7 @@ from sklearn.ensemble import (
     RandomForestClassifier,
     GradientBoostingClassifier
 )
+from xgboost import XGBClassifier
 
 from imblearn import FunctionSampler
 from imblearn.over_sampling import SMOTE
@@ -61,6 +62,15 @@ def build_pipeline(model_name: str, memory=None) -> ImbPipeline:
             validation_fraction=0.10,
             random_state=42,
         )
+    elif model_name == "XGB":
+        # feature_step = "passthrough"
+        clf = XGBClassifier(
+            booster="gbtree",
+            tree_method="hist",
+            n_jobs=1,
+            verbosity=3,
+            random_state=42
+        )
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")
 
@@ -94,7 +104,7 @@ def param_space(model_name: str) -> dict:
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
             "feature_selection__k": randint(10, 67),  # [10, 66]
             "classifier__max_depth": randint(3, 20),  # [3, 19]
-            "classifier__max_features": ["sqrt", "log2", None],
+            "classifier__max_features": ["sqrt", "log2", 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
             "classifier__min_samples_split": uniform(0.05, 0.35),  # Fraction [0.05, 0.4]
             "classifier__min_samples_leaf": uniform(0.01, 0.09),  # Fraction [0.01, 0.1]
             "classifier__ccp_alpha": loguniform(1e-6, 1e-1),
@@ -106,7 +116,7 @@ def param_space(model_name: str) -> dict:
             "feature_selection__k": randint(10, 67),  # [10, 66]
             "classifier__n_estimators": randint(200, 1001),  # [200, 1000]
             "classifier__max_depth": randint(3, 20),  # [3, 19]
-            "classifier__max_features": ["sqrt", "log2", 0.2, 0.3, 0.4, None],
+            "classifier__max_features": ["sqrt", "log2", 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
             "classifier__min_samples_split": uniform(0.05, 0.45),  # [0.05, 0.5]
             "classifier__min_samples_leaf": uniform(0.01, 0.19),  # [0.01, 0.2]
             "classifier__ccp_alpha": loguniform(1e-6, 1e-1),
@@ -118,10 +128,24 @@ def param_space(model_name: str) -> dict:
             "feature_selection__k": randint(10, 67),  # [10, 66]
             "classifier__learning_rate": loguniform(1e-4, 1e-1),
             "classifier__max_depth": randint(3, 8),  # [3, 7]
-            "classifier__max_features": ["sqrt", "log2", 0.2, 0.3, 0.4, None],
+            "classifier__max_features": ["sqrt", "log2", 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
             "classifier__min_samples_split": uniform(0.05, 0.30),  # [0.05, 0.35]
             "classifier__min_samples_leaf": uniform(0.01, 0.09),  # [0.01, 0.1]
             "classifier__subsample": uniform(0.75, 0.25),  # [0.75, 1.0]
+        }
+        return param_grid
+    elif model_name == "XGB":
+        param_grid = {
+            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "feature_selection__k": randint(10, 67),  # [10, 66]
+            "classifier__n_estimators": randint(200, 1001),  # [200, 1000]
+            "classifier__learning_rate": loguniform(1e-3, 3e-1),  # [0.001, 0.3]
+            "classifier__min_child_weight": uniform(1, 7),  # [1, 8]
+            "classifier__max_depth": randint(1, 10),  # [1, 9]
+            "classifier__gamma": uniform(0, 1),  # [0, 1]
+            "classifier__subsample": uniform(0.6, 0.4),  # [0.6, 1.0]
+            "classifier__colsample_bytree": uniform(0.6, 0.4),  # [0.6, 1.0]
+            "classifier__reg_lambda": loguniform(1e-3, 1e1),  # [0.001, 10]
         }
         return param_grid
     else:

@@ -15,7 +15,7 @@ from sklearn.model_selection import (
 
 from utils.data_loader import get_training_data
 from utils.model_factory import build_pipeline, param_space
-from utils.post_preocessing import save_results, plot_shap_summary, compute_fold_shap
+from utils.post_processing import save_results, plot_shap_summary, compute_fold_shap
 
 # Run the experiment with nested cross-validation
 def run_experiment(cnfg: dict):

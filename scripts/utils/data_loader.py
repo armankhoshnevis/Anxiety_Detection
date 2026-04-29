@@ -22,7 +22,7 @@ def load_data(config):
 
     for country in countries:
         for task in tasks:
-            file_name = f"../Datasets/{country}_GAD_eGeMAPS_{task}.csv"
+            file_name = f"../datasets/{country}_GAD_eGeMAPS_{task}.csv"
             
             temp_df = pd.read_csv(file_name)
             temp_df = temp_df[temp_df["Sex"].isin(sexes)]

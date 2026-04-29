@@ -2,40 +2,32 @@ import pandas as pd
 from itertools import product
 
 # Load the data
-def get_training_data(countries, tasks, sexes, base_path="../Datasets/"):
-    """
-    Loads and combines data based on selected countries, tasks, and sexes.
-    
-    Parameters:
-    - countries: List of strings (e.g., ["Botswana", "Ghana"])
-    - tasks: List of strings (e.g., ["QBF", "JF"])
-    - sexes: List of strings (e.g., ["Male"] or ["Male", "Female"])
-    
+def load_data(config):
+    """Prepares the training data based on the provided configuration.
+
+    Args:
+        config (dict): Configuration dictionary
+
     Returns:
-    - X (pandas DataFrame): Feature matrix
-    - y (pandas Series): Target vector
-    - groups (numpy array): Participant SessionIDs
+        X (pandas DataFrame): Feature matrix
+        y (pandas Series): Target vector
+        groups (numpy array): Participant SessionIDs
     """
     
+    countries = config["countries"]
+    tasks = config["tasks"]
+    sexes = config["sexes"]
+
     df_list = []
-    
+
     for country in countries:
         for task in tasks:
-            file_name = f"{base_path}{country}_GAD_eGeMAPS_{task}.csv"
+            file_name = f"../Datasets/{country}_GAD_eGeMAPS_{task}.csv"
             
-            try:
-                temp_df = pd.read_csv(file_name)
-                temp_df = temp_df[temp_df["Sex"].isin(sexes)]
-                temp_df["Anxiety_Binary"] = temp_df["GAD7_Total"].apply(lambda x: 1 if x >= 5 else 0)
-                df_list.append(temp_df)
-            
-            except FileNotFoundError:
-                print(f"Warning: File not found: {file_name}")
-            except KeyError as e:
-                print(f"Warning: Missing column in {file_name}: {e}")
-
-    if not df_list:
-        raise ValueError("No data loaded. Check your file paths and parameters.")
+            temp_df = pd.read_csv(file_name)
+            temp_df = temp_df[temp_df["Sex"].isin(sexes)]
+            temp_df["Anxiety_Binary"] = temp_df["GAD7_Total"].apply(lambda x: 1 if x >= 5 else 0)
+            df_list.append(temp_df)
 
     combined_df = pd.concat(df_list, axis=0, ignore_index=True)
 
@@ -43,17 +35,25 @@ def get_training_data(countries, tasks, sexes, base_path="../Datasets/"):
         "SessionID", "QBF_Name", "JohnFarm_Name", "Sex", "Age", "Health", "Health_Binary",
         "Country", "GAD7_Total", "Anxiety_Category", "Anxiety_Binary"
     ]
-    
-    groups = combined_df["SessionID"].astype(str).to_numpy()
+
+    groups = combined_df["SessionID"].to_numpy()
     X = combined_df.drop(columns=metadata_cols, errors='ignore')
     y = combined_df["Anxiety_Binary"]
 
     return X, y, groups
 
-# Create data grid for experiments
-def make_data_grid() -> list[dict]:
-    """
-    Creates a grid of data selection parameters for experiments.
+# Create configuration file for experiments
+def create_configs(case_idx, model_name, feature_selector_method, n_dict):
+    """Creates a configuration dictionary for the specified case index, model name, feature selector method, and additional parameters.
+    
+    Args:
+        case_idx (int): Index of the case to create configuration for.
+        model_name (str): Name of the machine learning model to be used.
+        feature_selector_method (str): Method for feature selection.
+        n_dict (dict): Additional parameters to be included in the configuration.
+    
+    Returns:        
+        config (dict): Configuration dictionary for the specified case. 
     """
     countries = ["Botswana", "Ghana", "Nigeria", "Tanzania"]
     tasks_dict = {
@@ -77,4 +77,9 @@ def make_data_grid() -> list[dict]:
             "sexes_key": sex_key
         }
         )
-    return grid
+    
+    config = grid[case_idx]
+    config.update({"model_name": model_name})
+    config.update({"feature_selector_method": feature_selector_method})
+    config.update(n_dict)
+    return config

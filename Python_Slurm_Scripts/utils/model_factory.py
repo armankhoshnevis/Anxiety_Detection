@@ -1,29 +1,107 @@
+import numpy as np
+import pandas as pd
+
 from functools import partial
 from scipy.stats import randint, uniform, loguniform
 
-from sklearn.feature_selection import SelectKBest
+from .preprocessing import lof_outlier_removal
+
 from sklearn.preprocessing import PowerTransformer
+
+from imblearn import FunctionSampler
+
+from sklearn.feature_selection import SelectPercentile
+from sklearn.feature_selection import mutual_info_classif
+
+from sklearn.base import BaseEstimator, TransformerMixin
+
+from sklearn.feature_selection import RFE
+from sklearn.ensemble import RandomForestClassifier
+
+from imblearn.over_sampling import SMOTE
+
+from imblearn.pipeline import Pipeline as ImbPipeline
 
 from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import (
-    RandomForestClassifier,
-    GradientBoostingClassifier
-)
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from xgboost import XGBClassifier
 
-from imblearn import FunctionSampler
-from imblearn.over_sampling import SMOTE
-from imblearn.pipeline import Pipeline as ImbPipeline
+# Define the custom correlation-based feature selection class
+class CorrelationBasedFeatureSelection(BaseEstimator, TransformerMixin):
+    def __init__(self, intercorr_threshold=0.90, target_corr_threshold=0.25):
+        self.intercorr_threshold = intercorr_threshold
+        self.target_corr_threshold = target_corr_threshold
+        self.to_drop_intercorrelated_ = []
+        self.to_drop_target_corr_ = []
+        self.to_drop_ = []
+        self.selected_features_ = []
 
-from .preprocessing import lof_outlier_removal, mi_score_func
+    def fit(self, X, y):
+        X_df = pd.DataFrame(X) if isinstance(X, np.ndarray) else X
+        y_series = pd.Series(y) if isinstance(y, np.ndarray) else y
+        
+        corr_matrix = X_df.corr().abs()
+        upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+        target_corr = X_df.apply(lambda col: col.corr(y_series)).abs()
+        
+        drop_intercorr_set = set()
+        for col in upper_tri.columns:
+            for row in upper_tri.index:
+                if upper_tri.loc[row, col] > self.intercorr_threshold:
+                    if row not in drop_intercorr_set and col not in drop_intercorr_set:
+                        if target_corr[row] >= target_corr[col]:
+                            drop_intercorr_set.add(col)
+                        else:
+                            drop_intercorr_set.add(row)
+        
+        self.to_drop_intercorrelated_ = list(drop_intercorr_set)
+
+        X_reduced = X_df.drop(columns=self.to_drop_intercorrelated_, errors='ignore')
+        target_corr_reduced = target_corr.loc[X_reduced.columns]
+        n_reduced = len(target_corr_reduced)
+        n_keep = int(np.ceil(self.target_corr_threshold * n_reduced))
+
+        self.selected_features_ = (
+            target_corr_reduced
+            .sort_values(ascending=False)
+            .head(n_keep)
+            .index
+            .tolist()
+        )
+
+        to_drop_target_corr_ = [
+            col for col in X_reduced.columns
+            if col not in self.selected_features_
+        ]
+
+        self.to_drop_target_corr_ = to_drop_target_corr_
+        self.to_drop_ = self.to_drop_intercorrelated_ + self.to_drop_target_corr_
+
+        return self
+
+    def transform(self, X):
+        X_df = pd.DataFrame(X) if isinstance(X, np.ndarray) else X.copy()
+        X_selected = X_df.drop(columns=self.to_drop_, errors='ignore')
+        return X_selected.values if isinstance(X, np.ndarray) else X_selected
+
+    def set_output(self, transform):
+        return self
 
 # Build the machine learning pipeline
-def build_pipeline(model_name: str, memory=None) -> ImbPipeline:
-    """
-    Builds and returns a machine learning pipeline with power transformation and standard scaling,
+def build_pipeline(config, memory=None):
+    """Builds and returns a machine learning pipeline with power transformation and standard scaling,
     outlier removal, feature selection, oversampling, and classification steps.
+    
+    Args:
+        config (dict): Configuration dictionary containing model and feature selection parameters.
+        memory: Optional memory parameter for caching transformers in the pipeline.
+    
+    Returns:
+        pipeline (ImbPipeline): An imbalanced-learn pipeline with the specified steps.
     """
+    yj_pt = PowerTransformer(method="yeo-johnson", standardize=True)
+    
     lof_sampler = FunctionSampler(
         func=lof_outlier_removal,
         kw_args={
@@ -35,26 +113,32 @@ def build_pipeline(model_name: str, memory=None) -> ImbPipeline:
         validate=False,
     )
     
-    mi_score_partial_func = partial(mi_score_func, n_neighbors=5, random_state=42)
-    feature_step = SelectKBest(score_func=mi_score_partial_func)
+    if config["feature_selector_method"] == "mi_based":
+        feature_selector = SelectPercentile(score_func=partial(mutual_info_classif, n_neighbors=5, random_state=42))
     
+    elif config["feature_selector_method"] == "corr_based":
+        feature_selector = CorrelationBasedFeatureSelection(intercorr_threshold=0.90, target_corr_threshold=0.25)
+    
+    elif config["feature_selector_method"] == "rfe":
+        feature_selector = RFE(estimator=RandomForestClassifier(n_estimators=25, random_state=42), step = 0.1)
+
+    smote = SMOTE(random_state=42)
+
+    model_name = config["model_name"]
     if model_name == "SVC":
-        # feature_step = PCA(svd_solver="full")
         clf = SVC(probability=False, random_state=42)
+    
     elif model_name == "DT":
-        # feature_step = "passthrough"
-        # feature_step = PCA(svd_solver="full")
         clf = DecisionTreeClassifier(random_state=42)
+    
     elif model_name == "RF":
-        # feature_step = "passthrough"
         clf = RandomForestClassifier(
             class_weight=None,
             n_jobs=1,
             random_state=42,
             )
+    
     elif model_name == "GB":
-        # feature_step = "passthrough"
-        # feature_step = PCA(svd_solver="full")
         clf = GradientBoostingClassifier(
             n_estimators=1500,
             n_iter_no_change=10,
@@ -62,8 +146,8 @@ def build_pipeline(model_name: str, memory=None) -> ImbPipeline:
             validation_fraction=0.10,
             random_state=42,
         )
+    
     elif model_name == "XGB":
-        # feature_step = "passthrough"
         clf = XGBClassifier(
             booster="gbtree",
             tree_method="hist",
@@ -71,36 +155,63 @@ def build_pipeline(model_name: str, memory=None) -> ImbPipeline:
             verbosity=3,
             random_state=42
         )
+    
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")
 
     steps = [
-        ("yjpt", PowerTransformer(method="yeo-johnson", standardize=True)),
+        ("yj_pt", yj_pt),
         ("outlier_removal", lof_sampler),
-        ("feature_selection", feature_step),
-        ("oversampling", SMOTE(random_state=42)),
+        ("feature_selector", feature_selector),
+        ("oversampling", smote),
         ("classifier", clf),
     ]
     
     pipeline = ImbPipeline(steps=steps, memory=memory).set_output(transform="pandas")
     return pipeline
 
-# Define hyperparameter search space
-def param_space(model_name: str) -> dict:
+# Define search space for hyperparameter tuning
+def param_space(config):
+    """Returns the hyperparameter search space for the specified model.
+    
+    Args:
+        config (dict): Configuration dictionary containing model and feature selection method.
+    
+    Returns:
+        param_distributions (dict): A dictionary containing the hyperparameter search space for the specified model
     """
-    Returns the hyperparameter search space for the specified model.
-    """
+    model_name = config["model_name"]
+    feature_selector_method = config["feature_selector_method"]
+    
+    param_distributions = {}
+    if feature_selector_method == "mi_based":
+        param_distributions.update({
+            "feature_selector__percentile": randint(50, 91),  # [50, 90]
+        })
+    
+    elif feature_selector_method == "corr_based":
+        param_distributions.update({
+            "feature_selector__intercorr_threshold": uniform(0.85, 0.1),  # [0.85, 0.95]
+            "feature_selector__target_corr_threshold": uniform(0.2, 0.1),  # [0.2, 0.3]
+        })
+
+    elif feature_selector_method == "rfe":
+        param_distributions.update({
+            "feature_selector__n_features_to_select": uniform(0.1, 0.9),  # [0.1, 1.0]
+        })
+    
     if model_name == "SVC":
-        param_grid = {
+        param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
             "feature_selection__k": randint(10, 67),  # [10, 66]
             "classifier__C": loguniform(1e-3, 1e6),
             "classifier__gamma": loguniform(1e-6, 1e2),
             "classifier__kernel": ["rbf"],
-        }
-        return param_grid
+        })
+        return param_distributions
+    
     elif model_name == "DT":
-        param_grid = {
+        param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
             "feature_selection__k": randint(10, 67),  # [10, 66]
             "classifier__max_depth": randint(3, 20),  # [3, 19]
@@ -108,10 +219,11 @@ def param_space(model_name: str) -> dict:
             "classifier__min_samples_split": uniform(0.05, 0.35),  # Fraction [0.05, 0.4]
             "classifier__min_samples_leaf": uniform(0.01, 0.09),  # Fraction [0.01, 0.1]
             "classifier__ccp_alpha": loguniform(1e-6, 1e-1),
-        }
-        return param_grid
+        })
+        return param_distributions
+    
     elif model_name == "RF":
-        param_grid = {
+        param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
             "feature_selection__k": randint(10, 67),  # [10, 66]
             "classifier__n_estimators": randint(200, 1001),  # [200, 1000]
@@ -120,10 +232,11 @@ def param_space(model_name: str) -> dict:
             "classifier__min_samples_split": uniform(0.05, 0.45),  # [0.05, 0.5]
             "classifier__min_samples_leaf": uniform(0.01, 0.19),  # [0.01, 0.2]
             "classifier__ccp_alpha": loguniform(1e-6, 1e-1),
-        }
-        return param_grid
+        })
+        return param_distributions
+    
     elif model_name == "GB":
-        param_grid = {
+        param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
             "feature_selection__k": randint(10, 67),  # [10, 66]
             "classifier__learning_rate": loguniform(1e-4, 1e-1),
@@ -132,12 +245,12 @@ def param_space(model_name: str) -> dict:
             "classifier__min_samples_split": uniform(0.05, 0.30),  # [0.05, 0.35]
             "classifier__min_samples_leaf": uniform(0.01, 0.09),  # [0.01, 0.1]
             "classifier__subsample": uniform(0.75, 0.25),  # [0.75, 1.0]
-        }
-        return param_grid
+        })
+        return param_distributions
+    
     elif model_name == "XGB":
-        param_grid = {
+        param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
-            "feature_selection__k": randint(10, 67),  # [10, 66]
             "classifier__n_estimators": randint(200, 1001),  # [200, 1000]
             "classifier__learning_rate": loguniform(1e-3, 3e-1),  # [0.001, 0.3]
             "classifier__min_child_weight": uniform(1, 7),  # [1, 8]
@@ -146,7 +259,8 @@ def param_space(model_name: str) -> dict:
             "classifier__subsample": uniform(0.6, 0.4),  # [0.6, 1.0]
             "classifier__colsample_bytree": uniform(0.6, 0.4),  # [0.6, 1.0]
             "classifier__reg_lambda": loguniform(1e-3, 1e1),  # [0.001, 10]
-        }
-        return param_grid
+        })
+        return param_distributions
+    
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")

@@ -4,9 +4,9 @@ from joblib import Memory
 
 from sklearn.model_selection import StratifiedGroupKFold, RandomizedSearchCV, cross_validate
 
-from utils.data_loader import load_data
-from utils.model_factory import build_pipeline, param_space
-from utils.post_processing import save_results, plot_shap_summary, compute_fold_shap
+from scripts.utils.data_loader import load_data
+from scripts.utils.model_factory import build_pipeline, param_space
+from scripts.utils.post_processing import save_results, plot_shap_summary, compute_fold_shap
 
 # Run the experiment with nested cross-validation
 def run_experiment(config: dict):

@@ -203,7 +203,6 @@ def param_space(config):
     if model_name == "SVC":
         param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
-            "feature_selection__k": randint(10, 67),  # [10, 66]
             "classifier__C": loguniform(1e-3, 1e6),
             "classifier__gamma": loguniform(1e-6, 1e2),
             "classifier__kernel": ["rbf"],
@@ -213,7 +212,6 @@ def param_space(config):
     elif model_name == "DT":
         param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
-            "feature_selection__k": randint(10, 67),  # [10, 66]
             "classifier__max_depth": randint(3, 20),  # [3, 19]
             "classifier__max_features": ["sqrt", "log2", 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
             "classifier__min_samples_split": uniform(0.05, 0.35),  # Fraction [0.05, 0.4]
@@ -225,7 +223,6 @@ def param_space(config):
     elif model_name == "RF":
         param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
-            "feature_selection__k": randint(10, 67),  # [10, 66]
             "classifier__n_estimators": randint(200, 1001),  # [200, 1000]
             "classifier__max_depth": randint(3, 20),  # [3, 19]
             "classifier__max_features": ["sqrt", "log2", 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
@@ -238,7 +235,6 @@ def param_space(config):
     elif model_name == "GB":
         param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
-            "feature_selection__k": randint(10, 67),  # [10, 66]
             "classifier__learning_rate": loguniform(1e-4, 1e-1),
             "classifier__max_depth": randint(3, 8),  # [3, 7]
             "classifier__max_features": ["sqrt", "log2", 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],

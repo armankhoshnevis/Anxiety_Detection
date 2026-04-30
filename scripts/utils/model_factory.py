@@ -142,7 +142,7 @@ def build_pipeline(config, memory=None):
         clf = GradientBoostingClassifier(
             n_estimators=1500,
             n_iter_no_change=10,
-            tol=0.0001,
+            tol=1e-4,
             validation_fraction=0.10,
             random_state=42,
         )
@@ -212,7 +212,7 @@ def param_space(config):
     elif model_name == "DT":
         param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
-            "classifier__max_depth": randint(3, 20),  # [3, 19]
+            "classifier__max_depth": randint(3, 21),  # [3, 20]
             "classifier__max_features": ["sqrt", "log2", 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
             "classifier__min_samples_split": uniform(0.05, 0.35),  # Fraction [0.05, 0.4]
             "classifier__min_samples_leaf": uniform(0.01, 0.09),  # Fraction [0.01, 0.1]
@@ -224,7 +224,7 @@ def param_space(config):
         param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
             "classifier__n_estimators": randint(200, 1001),  # [200, 1000]
-            "classifier__max_depth": randint(3, 20),  # [3, 19]
+            "classifier__max_depth": randint(3, 21),  # [3, 20]
             "classifier__max_features": ["sqrt", "log2", 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
             "classifier__min_samples_split": uniform(0.05, 0.45),  # [0.05, 0.5]
             "classifier__min_samples_leaf": uniform(0.01, 0.19),  # [0.01, 0.2]
@@ -235,7 +235,7 @@ def param_space(config):
     elif model_name == "GB":
         param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
-            "classifier__learning_rate": loguniform(1e-4, 1e-1),
+            "classifier__learning_rate": loguniform(5e-3, 5e-1),
             "classifier__max_depth": randint(3, 8),  # [3, 7]
             "classifier__max_features": ["sqrt", "log2", 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
             "classifier__min_samples_split": uniform(0.05, 0.30),  # [0.05, 0.35]

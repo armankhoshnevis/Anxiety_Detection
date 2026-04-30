@@ -3,6 +3,9 @@ import pandas as pd
 import numpy as np
 
 import shap
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 def save_results(config, results, scoring):
@@ -219,7 +222,7 @@ def plot_shap_summary(shap_df_avg, X, config):
     plt.setp(ax.get_xticklabels(), fontsize=20)
     plt.setp(ax.get_yticklabels(), fontsize=20)
     plt.savefig(f"{config['out_dir']}/SHAP_summary_bar_plot_{config['model_name']}.png", bbox_inches='tight')
-    plt.show()
+    plt.close()
 
     # Dot plot
     fig = shap.summary_plot(
@@ -236,4 +239,4 @@ def plot_shap_summary(shap_df_avg, X, config):
     plt.setp(ax.get_xticklabels(), fontsize=20)
     plt.setp(ax.get_yticklabels(), fontsize=20)
     plt.savefig(f"{config['out_dir']}/SHAP_summary_dot_plot_{config['model_name']}.png", bbox_inches='tight')
-    plt.show()
+    plt.close()

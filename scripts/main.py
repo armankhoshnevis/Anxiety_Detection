@@ -8,10 +8,10 @@ from scripts.utils.train_tune_val import run_experiment
 def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("--case_idx", type=int, default=8, help="0: QBF/M, 1: JF/M, etc.")
+    parser.add_argument("--case_idx", type=int, default=None, help="0: QBF/M, 1: JF/M, etc. Defaults to SLURM_ARRAY_TASK_ID or 8.")
     parser.add_argument("--model_name", type=str, default="XGB", choices=["SVC", "DT", "RF", "GB", "XGB"])
     parser.add_argument("--feature_selector_method", type=str, default="rfe", choices=["mi_based", "corr_based", "rfe"])
-    args = parser.parse_args(args=["--case_idx", "8", "--model_name", "XGB", "--feature_selector_method", "rfe"])
+    args = parser.parse_args()
     
     # Get and set configuration
     if args.case_idx is not None:
@@ -19,14 +19,13 @@ def main():
     else:
         case_idx = int(os.environ.get("SLURM_ARRAY_TASK_ID", "8"))
 
-    case_idx = args.case_idx
     model_name = args.model_name
     feature_selector_method = args.feature_selector_method
     
     N_REPEATS = 7
     OUTER_SPLITS = 5
     INNER_SPLITS = 5
-    N_ITER = 10
+    N_ITER = 60
     TOTAL_OUTER_FITS = N_REPEATS * OUTER_SPLITS
     ALLOCATED_CPUS = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1))
 

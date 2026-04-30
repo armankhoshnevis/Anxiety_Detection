@@ -91,63 +91,106 @@ def compute_fold_shap(outer_splits, results, model_name, X, y, config):
     Returns:
         tuple: A tuple containing a list of SHAP dataframes for each fold, a dataframe of all SHAP values, and a dataframe of average SHAP values.
     """
+    # TODO: Check if it's required to remove the following hardcoded values
+    shap_background_fraction = 1/4
+    shap_eval_fraction = 1/3
+
+    shap_background_min = 200
+    shap_background_max = 1000
+
+    shap_eval_min = 50
+    shap_eval_max = 500
+
+    # TODO: Check if it's requried for the MLP model
+    # def _positive_class_score(estimator, X_batch):
+    #     if hasattr(estimator, "predict_proba"):
+    #         return estimator.predict_proba(X_batch)[:, 1]
+    #     return estimator.decision_function(X_batch)
 
     all_shap_dfs = []
     for fold_idx, ((train_idx, val_idx), search_estimator) in enumerate(zip(outer_splits, results['estimator'])):
-        search_estimator = results['estimator'][fold_idx]
         best_estimator = search_estimator.best_estimator_
 
-        X_train_fold = X.iloc[train_idx]  # .reset_index(drop=True)
-        X_val_fold = X.iloc[val_idx]  # .reset_index(drop=True)
-        
+        X_train_fold = X.iloc[train_idx]
+        X_val_fold = X.iloc[val_idx]
+
         preprocessor = best_estimator[:-2]  # Exclude oversampling and classifier
         classifier = best_estimator[-1]
-        
+
         X_train_trans = preprocessor.transform(X_train_fold)
         X_val_trans = preprocessor.transform(X_val_fold)
 
         selected_features_names = X_train_trans.columns.tolist()
         all_features_names = X.columns.tolist()
 
-        # Decide on background data for SHAP based on model type
-        if model_name not in ["SVC"]:
-            X_val_trans_sampled = X_val_trans.copy()
-            background = X_train_trans.copy()
-        
-        else:
-            X_val_trans_sampled = X_val_trans.sample(n=int(np.floor(len(X_val_trans)/3)), random_state=42).reset_index(drop=True)
-            background = shap.kmeans(X_train_trans, 50)
+        # Sample background data for SHAP from the transformed training set
+        n_background = min(
+            len(X_train_trans),
+            max(shap_background_min, int(np.ceil(len(X_train_trans) * shap_background_fraction))),
+            shap_background_max
+        )
+        background = X_train_trans.sample(
+            n=n_background,
+            random_state=42 + fold_idx,
+        )
 
-        # Compute SHAP values based on model type
-        if model_name in ["DT", "RF"]:
-            explainer = shap.TreeExplainer(classifier, background)
-            shap_values = explainer.shap_values(X_val_trans_sampled)[:, :, 1]
-        
-        elif model_name in ["GB", "XGB"]:
-            explainer = shap.TreeExplainer(classifier, background)
-            shap_values = explainer.shap_values(X_val_trans_sampled)
+        # Sample evaluation data for SHAP from the transformed validation set
+        n_eval = min(
+            len(X_val_trans),
+            max(shap_eval_min, int(np.ceil(len(X_val_trans) * shap_eval_fraction))),
+            shap_eval_max,
+        )
+        X_val_trans_sampled = X_val_trans.sample(
+            n=n_eval,
+            random_state=42 + fold_idx,
+        )
+
+        # Compute SHAP values based on the model type
+        if model_name in ["DT", "RF", "GB", "XGB"]:
+            explainer = shap.TreeExplainer(
+                classifier,
+                data=background,
+                model_output="probability",
+                feature_perturbation="interventional",
+            )
+            shap_values = explainer.shap_values(X_val_trans_sampled, check_additivity=False)
         
         elif model_name == "SVC":
-            explainer = shap.KernelExplainer(classifier.decision_function, background)
-            shap_values = explainer.shap_values(X_val_trans_sampled)
+            explainer = shap.KernelExplainer(
+                classifier.decision_function, 
+                background
+            )
+            shap_values = explainer.shap_values(
+                X_val_trans_sampled,
+                nsamples=2*X_val_trans_sampled.shape[1]+512
+            )
         
         elif model_name == "MLP":
-            explainer = shap.DeepExplainer(classifier, background)
-            shap_values = explainer.shap_values(X_val_trans_sampled)
+            explainer = shap.DeepExplainer(
+                classifier,
+                background
+            )
+            shap_values = explainer.shap_values(
+                X_val_trans_sampled,
+                background
+            )
         
-        else:
-            raise ValueError(f"Unsupported model_name for SHAP: {model_name}")
+        if shap_values.ndim == 3:
+            shap_values = shap_values[:, :, 1] if shap_values.shape[2] > 1 else shap_values[:, :, 0]
         
         shap_df = pd.DataFrame(0.0, index=X_val_trans_sampled.index, columns=all_features_names)
-        shap_df.update(pd.DataFrame(shap_values, index=X_val_trans_sampled.index, columns=selected_features_names))
+        shap_df.loc[:, selected_features_names] = pd.DataFrame(
+            shap_values,
+            index=X_val_trans_sampled.index,
+            columns=selected_features_names,
+        )
         all_shap_dfs.append(shap_df)
-    
+
     total_shap_df = pd.concat(all_shap_dfs, axis=0)
     shap_df_avg = total_shap_df.groupby(total_shap_df.index).mean()
 
     shap_df_avg.to_csv(f"{config['out_dir']}/shap_values_avg_{config['model_name']}.csv")
     total_shap_df.to_csv(f"{config['out_dir']}/shap_values_all_{config['model_name']}.csv")
-    shap_df_avg.to_csv(f"{config['out_dir']}/shap_values_avg_{config['model_name']}.csv")
 
     return all_shap_dfs, total_shap_df, shap_df_avg
 
@@ -159,10 +202,12 @@ def plot_shap_summary(shap_df_avg, X, config):
         X (pandas DataFrame): Original feature dataframe.
         config (dict): Configuration dictionary containing output directory and model name.
     """
+    X_shap = X.loc[shap_df_avg.index]
+
     # Bar plot
     fig = shap.summary_plot(
         shap_df_avg.values,
-        X,
+        X_shap,
         plot_type="bar",
         show=False,
         max_display=10,
@@ -179,7 +224,7 @@ def plot_shap_summary(shap_df_avg, X, config):
     # Dot plot
     fig = shap.summary_plot(
         shap_df_avg.values,
-        X,
+        X_shap,
         plot_type="dot",
         show=False,
         max_display=10,

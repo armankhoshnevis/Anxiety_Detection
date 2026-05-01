@@ -26,6 +26,7 @@ from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from xgboost import XGBClassifier
+from lightgbm import LGBMClassifier
 
 # Define the custom correlation-based feature selection class
 class CorrelationBasedFeatureSelection(BaseEstimator, TransformerMixin):
@@ -156,6 +157,13 @@ def build_pipeline(config, memory=None):
             random_state=42
         )
     
+    elif model_name == "LGBM":
+        clf = LGBMClassifier(
+            boosting_type="gbdt",
+            n_jobs=1,
+            random_state=42,
+        )
+    
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")
 
@@ -250,8 +258,23 @@ def param_space(config):
             "classifier__n_estimators": randint(200, 1001),  # [200, 1000]
             "classifier__learning_rate": loguniform(1e-3, 3e-1),  # [0.001, 0.3]
             "classifier__min_child_weight": uniform(1, 7),  # [1, 8]
-            "classifier__max_depth": randint(1, 10),  # [1, 9]
+            "classifier__max_depth": randint(3, 11),  # [3, 10]
             "classifier__gamma": uniform(0, 1),  # [0, 1]
+            "classifier__subsample": uniform(0.6, 0.4),  # [0.6, 1.0]
+            "classifier__colsample_bytree": uniform(0.6, 0.4),  # [0.6, 1.0]
+            "classifier__reg_lambda": loguniform(1e-3, 1e1),  # [0.001, 10]
+        })
+        return param_distributions
+    
+    elif model_name == "LGBM":
+        param_distributions.update({
+            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "classifier__num_leaves": randint(24, 91),  # [24, 90]
+            "classifier__min_child_samples": randint(15, 101),  # [15, 100]
+            "classifier__max_depth": randint(3, 11),  # [3, 10]
+            "classifier__min_split_gain": loguniform(1e-3, 1e1),  # [0.001, 10]
+            "classifier__n_estimators": randint(200, 1001),  # [200, 1000]
+            "classifier__learning_rate": loguniform(1e-3, 3e-1),  # [0.001, 0.3]
             "classifier__subsample": uniform(0.6, 0.4),  # [0.6, 1.0]
             "classifier__colsample_bytree": uniform(0.6, 0.4),  # [0.6, 1.0]
             "classifier__reg_lambda": loguniform(1e-3, 1e1),  # [0.001, 10]

@@ -149,7 +149,7 @@ def compute_fold_shap(outer_splits, results, model_name, X, y, config):
         )
 
         # Compute SHAP values based on the model type
-        if model_name in ["DT", "RF", "GB", "XGB"]:
+        if model_name in ["DT", "RF", "GB", "XGB", "LGBM"]:
             explainer = shap.TreeExplainer(
                 classifier,
                 data=background,

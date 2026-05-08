@@ -43,6 +43,7 @@ def main():
     config = create_configs(case_idx, model_name, feature_selector_method, n_dict)
     out_dir = f"../results_tests/{model_name}_{feature_selector_method}/sex={config['sexes_key']}/task={config['tasks_key']}"
     config.update({"out_dir": out_dir})
+    os.makedirs(out_dir, exist_ok=True)
 
     # Run the experiment with nested cross-validation
     print(

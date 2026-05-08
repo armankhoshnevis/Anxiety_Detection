@@ -1,11 +1,18 @@
-from pathlib import Path
+import os
 import pandas as pd
 import numpy as np
 
 import shap
 import matplotlib
 
-matplotlib.use("Agg")
+try:
+    from IPython import get_ipython
+except ImportError:
+    get_ipython = None
+
+if get_ipython is None or get_ipython() is None:
+    matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
 
 def save_results(config, results, scoring):
@@ -19,25 +26,48 @@ def save_results(config, results, scoring):
     Returns:
         tuple: A tuple containing dataframes of results with best parameters, scoring statistics, outer CV results, and inner CV results.
     """
-    out_dir = config["out_dir"]
-    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    os.makedirs(config["out_dir"], exist_ok=True)
 
     # DataFrame of results with best parameters
     results_df = pd.DataFrame(results).drop(columns=["estimator"])
     params_df = pd.DataFrame.from_records(est.best_params_ for est in results["estimator"])
+    
     if config["model_name"] == "GB":
         params_df["classifier__n_estimators"] = [
             est.best_estimator_.named_steps["classifier"].n_estimators_ for est in results["estimator"]
         ]
+    
+    elif config["model_name"] == "MLP":
+        classifiers = [
+            est.best_estimator_.named_steps["classifier"]
+            for est in results["estimator"]
+        ]
+        params_df["classifier__loss"] = [
+            getattr(clf, "loss_", None)
+            for clf in classifiers
+        ]
+        params_df["classifier__best_loss"] = [
+            getattr(clf, "best_loss_", None)
+            for clf in classifiers
+        ]
+        params_df["classifier__best_validation_score"] = [
+            getattr(clf, "best_validation_score_", None)
+            for clf in classifiers
+        ]
+        params_df["classifier__n_iter"] = [
+            getattr(clf, "n_iter_", None)
+            for clf in classifiers
+        ]
+    
     results_df = pd.concat([results_df.reset_index(drop=True), params_df.reset_index(drop=True)], axis=1)
     results_df = results_df.sort_values("test_roc_auc", ascending=False)
-    results_df.to_csv(f"{out_dir}/results.csv", index=False)
+    results_df.to_csv(f"{config['out_dir']}/results.csv", index=False)
 
     # Summary statistics of metrics
     scoring_statistics_df = pd.DataFrame({
         k: results[f"test_{v}"] for k, v in scoring.items()
     }).agg(["mean", "std"]).T
-    scoring_statistics_df.to_csv(f"{out_dir}/scoring_statistics.csv", index=True)
+    scoring_statistics_df.to_csv(f"{config['out_dir']}/scoring_statistics.csv", index=True)
 
     # Outer CV results
     n_outer = config["outer_splits"]
@@ -47,20 +77,22 @@ def save_results(config, results, scoring):
         "outer_fold": (np.arange(n_total) % n_outer) + 1,
         **{k: results[f"test_{v}"] for k, v in scoring.items()}
     })
-    outer_df.to_csv(f"{out_dir}/outer_cv_results.csv", index=False)
+    outer_df.to_csv(f"{config['out_dir']}/outer_cv_results.csv", index=False)
 
-    if config["feature_selector_method"] == "corr_based":
+    if config["model_name"] != "MLP":
         inner_df = pd.DataFrame([
             {
                 "repeat": (i // config["outer_splits"]) + 1,
                 "outer_fold": (i % config["outer_splits"]) + 1,
                 "inner_best_score": est.best_score_,
                 "inner_best_params": est.best_params_,
-                "selected_features": list(est.best_estimator_.named_steps["feature_selector"].selected_features_),
-                "n_selected_features": len(list(est.best_estimator_.named_steps["feature_selector"].selected_features_))
+                "selected_features": list(est.best_estimator_.named_steps["feature_selector"].get_feature_names_out()),
+                "n_selected_features": len(list(est.best_estimator_.named_steps["feature_selector"].get_feature_names_out()))
             }
             for i, est in enumerate(results["estimator"])
         ])
+        inner_df.to_csv(f"{config['out_dir']}/inner_cv_results.csv", index=False)
+
     else:
         inner_df = pd.DataFrame([
             {
@@ -73,7 +105,21 @@ def save_results(config, results, scoring):
             }
             for i, est in enumerate(results["estimator"])
         ])
-    inner_df.to_csv(f"{out_dir}/inner_cv_results.csv", index=False)
+
+        loss_validation_df = pd.DataFrame([
+            {
+                "repeat": (i // config["outer_splits"]) + 1,
+                "outer_fold": (i % config["outer_splits"]) + 1,
+                "iteration": iteration + 1,
+                "loss": loss,
+                "validation_score": score
+            }
+            for i, clf in enumerate(classifiers)
+            for iteration, (loss, score) in enumerate(zip(getattr(clf, "loss_curve_", []), getattr(clf, "validation_scores_", [])))
+        ])
+        
+        inner_df.to_csv(f"{config['out_dir']}/inner_cv_results.csv", index=False)
+        loss_validation_df.to_csv(f"{config['out_dir']}/loss_validation_curves.csv", index=False)
     
     return results_df, scoring_statistics_df, outer_df, inner_df
 
@@ -94,21 +140,16 @@ def compute_fold_shap(outer_splits, results, model_name, X, y, config):
     Returns:
         tuple: A tuple containing a list of SHAP dataframes for each fold, a dataframe of all SHAP values, and a dataframe of average SHAP values.
     """
-    # TODO: Check if it's required to remove the following hardcoded values
+    os.makedirs(config["out_dir"], exist_ok=True)
+    
     shap_background_fraction = 1/4
     shap_eval_fraction = 1/3
 
-    shap_background_min = 200
-    shap_background_max = 1000
+    shap_background_min = 25 # 100 or 200
+    shap_background_max = 50 # 200 or 1000
 
-    shap_eval_min = 50
-    shap_eval_max = 500
-
-    # TODO: Check if it's requried for the MLP model
-    # def _positive_class_score(estimator, X_batch):
-    #     if hasattr(estimator, "predict_proba"):
-    #         return estimator.predict_proba(X_batch)[:, 1]
-    #     return estimator.decision_function(X_batch)
+    shap_eval_min = 12 # 50
+    shap_eval_max = 25 # 100 or 500
 
     all_shap_dfs = []
     for fold_idx, ((train_idx, val_idx), search_estimator) in enumerate(zip(outer_splits, results['estimator'])):
@@ -132,10 +173,7 @@ def compute_fold_shap(outer_splits, results, model_name, X, y, config):
             max(shap_background_min, int(np.ceil(len(X_train_trans) * shap_background_fraction))),
             shap_background_max
         )
-        background = X_train_trans.sample(
-            n=n_background,
-            random_state=42 + fold_idx,
-        )
+        background = shap.kmeans(X_train_trans, n_background)
 
         # Sample evaluation data for SHAP from the transformed validation set
         n_eval = min(
@@ -169,13 +207,15 @@ def compute_fold_shap(outer_splits, results, model_name, X, y, config):
             )
         
         elif model_name == "MLP":
-            explainer = shap.DeepExplainer(
-                classifier,
-                background
+            explainer = shap.KernelExplainer(
+                lambda X_batch: classifier.predict_proba(
+                    pd.DataFrame(X_batch, columns=selected_features_names)
+                )[:, 1],
+                background,
             )
             shap_values = explainer.shap_values(
                 X_val_trans_sampled,
-                background
+                nsamples=2 * X_val_trans_sampled.shape[1] + 512,
             )
         
         if shap_values.ndim == 3:
@@ -205,6 +245,7 @@ def plot_shap_summary(shap_df_avg, X, config):
         X (pandas DataFrame): Original feature dataframe.
         config (dict): Configuration dictionary containing output directory and model name.
     """
+    os.makedirs(config["out_dir"], exist_ok=True)
     X_shap = X.loc[shap_df_avg.index]
 
     # Bar plot

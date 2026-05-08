@@ -27,6 +27,7 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
+from sklearn.neural_network import MLPClassifier
 
 # Define the custom correlation-based feature selection class
 class CorrelationBasedFeatureSelection(BaseEstimator, TransformerMixin):
@@ -164,6 +165,14 @@ def build_pipeline(config, memory=None):
             random_state=42,
         )
     
+    elif model_name == "MLP":
+        clf = MLPClassifier(
+            random_state=42,
+            max_iter=2000,
+            early_stopping=True,
+            n_iter_no_change=15,
+            validation_fraction=0.15
+        )
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")
 
@@ -281,5 +290,24 @@ def param_space(config):
         })
         return param_distributions
     
+    elif model_name == "MLP":
+        hidden_layers_counts = [3, 4, 5, 6]
+        hidden_layer_widths = [16, 32, 64, 128]
+        hidden_layer_sizes = [
+            tuple([width] * n_layers)
+            for n_layers in hidden_layers_counts
+            for width in hidden_layer_widths
+        ]
+
+        param_distributions.update({
+            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "classifier__hidden_layer_sizes": hidden_layer_sizes,
+            "classifier__learning_rate_init": loguniform(1e-5, 1e-2),  # [0.00001, 0.01]
+            "classifier__batch_size": [16, 32, 64, 128, "auto"],
+            "classifier__activation": ["relu", "tanh", "logistic"],
+            "classifier__solver": ["adam", "sgd", "lbfgs"],
+            "classifier__alpha": loguniform(1e-5, 1e-2),  # [0.00001, 0.01]
+        })
+        return param_distributions
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")

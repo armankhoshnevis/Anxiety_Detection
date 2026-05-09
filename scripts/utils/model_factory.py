@@ -28,6 +28,7 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 from sklearn.neural_network import MLPClassifier
+from sklearn.naive_bayes import GaussianNB
 
 # Define the custom correlation-based feature selection class
 class CorrelationBasedFeatureSelection(BaseEstimator, TransformerMixin):
@@ -176,6 +177,10 @@ def build_pipeline(config, memory=None):
             n_iter_no_change=15,
             validation_fraction=0.15
         )
+    
+    elif model_name == "NB":
+        clf = GaussianNB()
+    
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")
 
@@ -312,5 +317,13 @@ def param_space(config):
             "classifier__alpha": loguniform(1e-5, 1e-2),  # [0.00001, 0.01]
         })
         return param_distributions
+    
+    elif model_name == "NB":
+        param_distributions.update({
+            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "classifier__var_smoothing": loguniform(1e-11, 1e-7),  # [1e-11, 1e-7]
+        })
+        return param_distributions
+    
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")

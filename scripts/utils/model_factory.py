@@ -123,6 +123,9 @@ def build_pipeline(config, memory=None):
     
     elif config["feature_selector_method"] == "rfe":
         feature_selector = RFE(estimator=RandomForestClassifier(n_estimators=25, random_state=42), step = 0.1)
+    
+    elif config["feature_selector_method"] == "passthrough":
+        feature_selector = "passthrough"
 
     smote = SMOTE(random_state=42)
 

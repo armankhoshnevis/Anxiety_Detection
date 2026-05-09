@@ -25,7 +25,7 @@ def main():
     N_REPEATS = 7
     OUTER_SPLITS = 5
     INNER_SPLITS = 5
-    N_ITER = 60
+    N_ITER = 100
     TOTAL_OUTER_FITS = N_REPEATS * OUTER_SPLITS
     ALLOCATED_CPUS = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1))
 
@@ -41,7 +41,7 @@ def main():
     }
 
     config = create_configs(case_idx, model_name, feature_selector_method, n_dict)
-    out_dir = f"../results_tests/{model_name}_{feature_selector_method}/sex={config['sexes_key']}/task={config['tasks_key']}"
+    out_dir = f"../results/{model_name}_{feature_selector_method}/array={case_idx}"
     config.update({"out_dir": out_dir})
     os.makedirs(out_dir, exist_ok=True)
 

@@ -145,11 +145,11 @@ def compute_fold_shap(outer_splits, results, model_name, X, y, config):
     shap_background_fraction = 1/4
     shap_eval_fraction = 1/3
 
-    shap_background_min = 25 # 100 or 200
-    shap_background_max = 50 # 200 or 1000
+    shap_background_min = 100 # 25 or 100 or 200
+    shap_background_max = 200 # 50 or 200 or 1000
 
-    shap_eval_min = 12 # 50
-    shap_eval_max = 25 # 100 or 500
+    shap_eval_min = 50 # 12 or 50
+    shap_eval_max = 100 # 25 or 100 or 500
 
     all_shap_dfs = []
     for fold_idx, ((train_idx, val_idx), search_estimator) in enumerate(zip(outer_splits, results['estimator'])):
@@ -167,13 +167,16 @@ def compute_fold_shap(outer_splits, results, model_name, X, y, config):
         selected_features_names = X_train_trans.columns.tolist()
         all_features_names = X.columns.tolist()
 
-        # Sample background data for SHAP from the transformed training set
+        # Determine the number of background samples for SHAP
         n_background = min(
             len(X_train_trans),
             max(shap_background_min, int(np.ceil(len(X_train_trans) * shap_background_fraction))),
             shap_background_max
         )
-        background = shap.kmeans(X_train_trans, n_background)
+        tree_background = X_train_trans.sample(
+            n=n_background,
+            random_state=42 + fold_idx,
+        )
 
         # Sample evaluation data for SHAP from the transformed validation set
         n_eval = min(
@@ -187,7 +190,11 @@ def compute_fold_shap(outer_splits, results, model_name, X, y, config):
         )
 
         # Compute SHAP values based on the model type
-        if model_name in ["DT", "RF", "GB", "XGB", "LGBM"]:
+        if model_name in ["DT", "RF", "GB", "XGB", "LGBM"]:    
+            background = X_train_trans.sample(
+                n=n_background,
+                random_state=42 + fold_idx
+            )
             explainer = shap.TreeExplainer(
                 classifier,
                 data=background,
@@ -197,6 +204,10 @@ def compute_fold_shap(outer_splits, results, model_name, X, y, config):
             shap_values = explainer.shap_values(X_val_trans_sampled, check_additivity=False)
         
         elif model_name == "SVC":
+            background = shap.kmeans(
+                X_train_trans,
+                n_background
+            )
             explainer = shap.KernelExplainer(
                 classifier.decision_function, 
                 background
@@ -207,6 +218,10 @@ def compute_fold_shap(outer_splits, results, model_name, X, y, config):
             )
         
         elif model_name == "MLP":
+            background = shap.kmeans(
+                X_train_trans,
+                n_background
+            )
             explainer = shap.KernelExplainer(
                 lambda X_batch: classifier.predict_proba(
                     pd.DataFrame(X_batch, columns=selected_features_names)

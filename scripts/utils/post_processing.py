@@ -86,8 +86,8 @@ def save_results(config, results, scoring):
                 "outer_fold": (i % config["outer_splits"]) + 1,
                 "inner_best_score": est.best_score_,
                 "inner_best_params": est.best_params_,
-                "selected_features": list(est.best_estimator_.named_steps["feature_selector"].get_feature_names_out()),
-                "n_selected_features": len(list(est.best_estimator_.named_steps["feature_selector"].get_feature_names_out()))
+                "selected_features": list(est.best_estimator_.named_steps["feature_selector"].get_feature_names_out()) if config["feature_selector_method"] != "passthrough" else "passthrough",
+                "n_selected_features": len(list(est.best_estimator_.named_steps["feature_selector"].get_feature_names_out())) if config["feature_selector_method"] != "passthrough" else "passthrough"
             }
             for i, est in enumerate(results["estimator"])
         ])
@@ -100,8 +100,8 @@ def save_results(config, results, scoring):
                 "outer_fold": (i % config["outer_splits"]) + 1,
                 "inner_best_score": est.best_score_,
                 "inner_best_params": est.best_params_,
-                "selected_features": list(est.best_estimator_.named_steps["feature_selector"].get_feature_names_out()),
-                "n_selected_features": len(list(est.best_estimator_.named_steps["feature_selector"].get_feature_names_out()))
+                "selected_features": list(est.best_estimator_.named_steps["feature_selector"].get_feature_names_out()) if config["feature_selector_method"] != "passthrough" else "passthrough",
+                "n_selected_features": len(list(est.best_estimator_.named_steps["feature_selector"].get_feature_names_out())) if config["feature_selector_method"] != "passthrough" else "passthrough"
             }
             for i, est in enumerate(results["estimator"])
         ])

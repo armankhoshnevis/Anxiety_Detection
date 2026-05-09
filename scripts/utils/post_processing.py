@@ -173,10 +173,6 @@ def compute_fold_shap(outer_splits, results, model_name, X, y, config):
             max(shap_background_min, int(np.ceil(len(X_train_trans) * shap_background_fraction))),
             shap_background_max
         )
-        tree_background = X_train_trans.sample(
-            n=n_background,
-            random_state=42 + fold_idx,
-        )
 
         # Sample evaluation data for SHAP from the transformed validation set
         n_eval = min(

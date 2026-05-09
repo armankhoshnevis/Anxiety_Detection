@@ -29,6 +29,7 @@ from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
 
 # Define the custom correlation-based feature selection class
 class CorrelationBasedFeatureSelection(BaseEstimator, TransformerMixin):
@@ -181,6 +182,9 @@ def build_pipeline(config, memory=None):
     elif model_name == "NB":
         clf = GaussianNB()
     
+    elif model_name == "KNN":
+        clf = KNeighborsClassifier()
+    
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")
 
@@ -322,6 +326,16 @@ def param_space(config):
         param_distributions.update({
             "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
             "classifier__var_smoothing": loguniform(1e-11, 1e-7),  # [1e-11, 1e-7]
+        })
+        return param_distributions
+    
+    elif model_name == "KNN":
+        param_distributions.update({
+            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "classifier__n_neighbors": list(range(3, 22, 2)),  # [3, 5, 7, ..., 21]
+            "classifier__weights": ["uniform", "distance"],
+            "classifier__algorithm": ["ball_tree", "kd_tree", "brute"],
+            "classifier__p": [1, 2],
         })
         return param_distributions
     

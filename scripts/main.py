@@ -9,7 +9,7 @@ def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser()
     parser.add_argument("--case_idx", type=int, default=None, help="0: QBF/M, 1: JF/M, etc. Defaults to SLURM_ARRAY_TASK_ID or 8.")
-    parser.add_argument("--model_name", type=str, default="XGB", choices=["SVC", "DT", "RF", "GB", "XGB", "LGBM", "MLP", "NB"])
+    parser.add_argument("--model_name", type=str, default="XGB", choices=["SVC", "DT", "RF", "GB", "XGB", "LGBM", "MLP", "NB", "KNN"])
     parser.add_argument("--feature_selector_method", type=str, default="rfe", choices=["mi_based", "corr_based", "rfe", "passthrough"])
     args = parser.parse_args()
     

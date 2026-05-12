@@ -133,7 +133,7 @@ def build_pipeline(config, memory=None):
 
     model_name = config["model_name"]
     if model_name == "SVC":
-        clf = SVC(probability=False, random_state=42)
+        clf = SVC(probability=True, random_state=42)
     
     elif model_name == "DT":
         clf = DecisionTreeClassifier(random_state=42)

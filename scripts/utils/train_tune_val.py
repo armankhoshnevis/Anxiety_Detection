@@ -75,6 +75,7 @@ def run_experiment(config: dict):
             scoring=scoring,
             return_estimator=True,
             n_jobs=config["outer_n_jobs"],
+            pre_dispatch=config["outer_n_jobs"],
             verbose=config["outer_verbose"],
             error_score='raise'
         )
@@ -83,7 +84,7 @@ def run_experiment(config: dict):
         results_df, scoring_statistics_df, outer_df, inner_df = save_results(config, results, scoring)
         
         # Compute SHAP values across all outer folds
-        all_shap_dfs, total_shap_df, shap_df_avg = compute_fold_shap(outer_splits, results, config["model_name"], X, y, config)
+        all_shap_dfs, total_shap_df, shap_df_avg = compute_fold_shap(outer_splits, results, config["model_name"], X, config)
         
         # Plot SHAP summary
         plot_shap_summary(shap_df_avg, X, config)

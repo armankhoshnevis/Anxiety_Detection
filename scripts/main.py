@@ -22,10 +22,10 @@ def main():
     model_name = args.model_name
     feature_selector_method = args.feature_selector_method
     
-    N_REPEATS = 7
+    N_REPEATS = 10
     OUTER_SPLITS = 5
     INNER_SPLITS = 5
-    N_ITER = 150
+    N_ITER = 300
     TOTAL_OUTER_FITS = N_REPEATS * OUTER_SPLITS
     ALLOCATED_CPUS = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1))
 

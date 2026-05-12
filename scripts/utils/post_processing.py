@@ -3,8 +3,9 @@ import pandas as pd
 import numpy as np
 
 import shap
-import matplotlib
+from joblib import Parallel, delayed
 
+import matplotlib
 try:
     from IPython import get_ipython
 except ImportError:
@@ -123,122 +124,108 @@ def save_results(config, results, scoring):
     
     return results_df, scoring_statistics_df, outer_df, inner_df
 
-def compute_fold_shap(outer_splits, results, model_name, X, y, config):
-    """Compute SHAP values per outer fold and tuned model
-
-    Args:
-        outer_splits (list): List of outer fold train/validation indices.
-        results (dict): Dictionary containing results and estimators from inner cv.
-        model_name (str): Name of the model used.
-        X (pd.DataFrame): Feature data.
-        y (pd.Series): Target data.
-        config (dict): Configuration dictionary.
-
-    Raises:
-        ValueError: If the model_name is unsupported for SHAP computation.
-
-    Returns:
-        tuple: A tuple containing a list of SHAP dataframes for each fold, a dataframe of all SHAP values, and a dataframe of average SHAP values.
-    """
-    os.makedirs(config["out_dir"], exist_ok=True)
+def _compute_single_fold_shap(fold_idx, train_idx, val_idx, search_estimator, model_name, X, config):
+    """Helper function to compute SHAP values for a single fold."""
     
     shap_background_fraction = 1/4
     shap_eval_fraction = 1/3
+    shap_background_min = 50 
+    shap_background_max = 100 
+    shap_eval_min = 50 
+    shap_eval_max = 100 
 
-    shap_background_min = 100 # 25 or 100 or 200
-    shap_background_max = 200 # 50 or 200 or 1000
+    best_estimator = search_estimator.best_estimator_
 
-    shap_eval_min = 50 # 12 or 50
-    shap_eval_max = 100 # 25 or 100 or 500
+    X_train_fold = X.iloc[train_idx]
+    X_val_fold = X.iloc[val_idx]
 
-    all_shap_dfs = []
-    for fold_idx, ((train_idx, val_idx), search_estimator) in enumerate(zip(outer_splits, results['estimator'])):
-        best_estimator = search_estimator.best_estimator_
+    preprocessor = best_estimator[:-2]  # Exclude oversampling and classifier
+    classifier = best_estimator[-1]
 
-        X_train_fold = X.iloc[train_idx]
-        X_val_fold = X.iloc[val_idx]
+    X_train_trans = preprocessor.transform(X_train_fold)
+    X_val_trans = preprocessor.transform(X_val_fold)
 
-        preprocessor = best_estimator[:-2]  # Exclude oversampling and classifier
-        classifier = best_estimator[-1]
+    selected_features_names = X_train_trans.columns.tolist()
+    all_features_names = X.columns.tolist()
 
-        X_train_trans = preprocessor.transform(X_train_fold)
-        X_val_trans = preprocessor.transform(X_val_fold)
+    # Determine the number of background samples for SHAP
+    n_background = min(
+        len(X_train_trans),
+        max(shap_background_min, int(np.ceil(len(X_train_trans) * shap_background_fraction))),
+        shap_background_max
+    )
 
-        selected_features_names = X_train_trans.columns.tolist()
-        all_features_names = X.columns.tolist()
+    # Sample evaluation data for SHAP from the transformed validation set
+    n_eval = min(
+        len(X_val_trans),
+        max(shap_eval_min, int(np.ceil(len(X_val_trans) * shap_eval_fraction))),
+        shap_eval_max,
+    )
+    
+    X_val_trans_sampled = X_val_trans.sample(
+        n=n_eval,
+        random_state=42 + fold_idx,
+    )
 
-        # Determine the number of background samples for SHAP
-        n_background = min(
-            len(X_train_trans),
-            max(shap_background_min, int(np.ceil(len(X_train_trans) * shap_background_fraction))),
-            shap_background_max
+    # Compute SHAP values based on the model type
+    if model_name in ["DT", "RF", "GB", "XGB", "LGBM"]:    
+        background = X_train_trans.sample(
+            n=n_background,
+            random_state=42 + fold_idx
         )
+        explainer = shap.TreeExplainer(
+            classifier,
+            data=background,
+            model_output="probability",
+            feature_perturbation="interventional",
+        )
+        shap_values = explainer.shap_values(X_val_trans_sampled, check_additivity=False)
+    
+    elif model_name in ["SVC", "MLP", "NB", "KNN"]:
+        background = shap.kmeans(
+            X_train_trans,
+            n_background
+        )
+        explainer = shap.KernelExplainer(
+            lambda X_batch: classifier.predict_proba(
+                pd.DataFrame(X_batch, columns=selected_features_names)
+            )[:, 1],
+            background
+        )
+        shap_values = explainer.shap_values(
+            X_val_trans_sampled,
+            nsamples=2 * X_val_trans_sampled.shape[1] + 512,
+            silent=True
+        )
+    
+    else:
+        raise ValueError(f"Model {model_name} is unsupported for SHAP computation.")
+    
+    if shap_values.ndim == 3:
+        shap_values = shap_values[:, :, 1] if shap_values.shape[2] > 1 else shap_values[:, :, 0]
+    
+    shap_df = pd.DataFrame(0.0, index=X_val_trans_sampled.index, columns=all_features_names)
+    shap_df.loc[:, selected_features_names] = pd.DataFrame(
+        shap_values,
+        index=X_val_trans_sampled.index,
+        columns=selected_features_names,
+    )
+    
+    return shap_df
 
-        # Sample evaluation data for SHAP from the transformed validation set
-        n_eval = min(
-            len(X_val_trans),
-            max(shap_eval_min, int(np.ceil(len(X_val_trans) * shap_eval_fraction))),
-            shap_eval_max,
+def compute_fold_shap(outer_splits, results, model_name, X, config, n_jobs=-1):
+    """
+    Compute SHAP values per outer fold in parallel.
+    """
+    print("\n*** Computing SHAP values for each outer fold in parallel... ***\n")
+    os.makedirs(config["out_dir"], exist_ok=True)
+    
+    all_shap_dfs = Parallel(n_jobs=n_jobs, backend="loky")(
+        delayed(_compute_single_fold_shap)(
+            fold_idx, train_idx, val_idx, search_estimator, model_name, X, config
         )
-        X_val_trans_sampled = X_val_trans.sample(
-            n=n_eval,
-            random_state=42 + fold_idx,
-        )
-
-        # Compute SHAP values based on the model type
-        if model_name in ["DT", "RF", "GB", "XGB", "LGBM"]:    
-            background = X_train_trans.sample(
-                n=n_background,
-                random_state=42 + fold_idx
-            )
-            explainer = shap.TreeExplainer(
-                classifier,
-                data=background,
-                model_output="probability",
-                feature_perturbation="interventional",
-            )
-            shap_values = explainer.shap_values(X_val_trans_sampled, check_additivity=False)
-        
-        elif model_name == "SVC":
-            background = shap.kmeans(
-                X_train_trans,
-                n_background
-            )
-            explainer = shap.KernelExplainer(
-                classifier.decision_function, 
-                background
-            )
-            shap_values = explainer.shap_values(
-                X_val_trans_sampled,
-                nsamples=2*X_val_trans_sampled.shape[1]+512
-            )
-        
-        elif model_name == "MLP":
-            background = shap.kmeans(
-                X_train_trans,
-                n_background
-            )
-            explainer = shap.KernelExplainer(
-                lambda X_batch: classifier.predict_proba(
-                    pd.DataFrame(X_batch, columns=selected_features_names)
-                )[:, 1],
-                background,
-            )
-            shap_values = explainer.shap_values(
-                X_val_trans_sampled,
-                nsamples=2 * X_val_trans_sampled.shape[1] + 512,
-            )
-        
-        if shap_values.ndim == 3:
-            shap_values = shap_values[:, :, 1] if shap_values.shape[2] > 1 else shap_values[:, :, 0]
-        
-        shap_df = pd.DataFrame(0.0, index=X_val_trans_sampled.index, columns=all_features_names)
-        shap_df.loc[:, selected_features_names] = pd.DataFrame(
-            shap_values,
-            index=X_val_trans_sampled.index,
-            columns=selected_features_names,
-        )
-        all_shap_dfs.append(shap_df)
+        for fold_idx, ((train_idx, val_idx), search_estimator) in enumerate(zip(outer_splits, results['estimator']))
+    )
 
     total_shap_df = pd.concat(all_shap_dfs, axis=0)
     shap_df_avg = total_shap_df.groupby(total_shap_df.index).mean()
@@ -286,7 +273,7 @@ def plot_shap_summary(shap_df_avg, X, config):
         plot_size=(15, 8)
     )
     ax = plt.gca()
-    ax.set_xlabel("Mean Absolute SHAP Value", fontsize=20)
+    ax.set_xlabel("Mean SHAP Value", fontsize=20)
     ax.set_ylabel(ax.get_ylabel(), fontsize=20)
     plt.setp(ax.get_xticklabels(), fontsize=20)
     plt.setp(ax.get_yticklabels(), fontsize=20)

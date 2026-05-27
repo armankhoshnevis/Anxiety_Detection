@@ -23,8 +23,8 @@ def main():
     feature_selector_method = args.feature_selector_method
     
     N_REPEATS = 10
-    OUTER_SPLITS = 5
-    INNER_SPLITS = 5
+    OUTER_SPLITS = 10
+    INNER_SPLITS = 10
     N_ITER = 300
     TOTAL_OUTER_FITS = N_REPEATS * OUTER_SPLITS
     ALLOCATED_CPUS = int(os.environ.get("SLURM_CPUS_PER_TASK", os.cpu_count() or 1))
@@ -34,7 +34,7 @@ def main():
         "outer_splits": OUTER_SPLITS,
         "inner_splits": INNER_SPLITS,
         "n_iter": N_ITER,
-        "outer_verbose": 20,
+        "outer_verbose": 10,
         "inner_verbose": 1,
         "outer_n_jobs": min(ALLOCATED_CPUS, TOTAL_OUTER_FITS),
         "inner_n_jobs": 1

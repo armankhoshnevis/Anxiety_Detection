@@ -10,6 +10,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--case_idx", type=int, default=None, help="0: QBF/M, 1: JF/M, etc. Defaults to SLURM_ARRAY_TASK_ID or 8.")
     parser.add_argument("--model_name", type=str, default="XGB", choices=["SVC", "DT", "RF", "GB", "XGB", "LGBM", "MLP", "NB", "KNN"])
+    parser.add_argument("--feature_set", type=str, default="eGeMAPS", choices=["eGeMAPS", "eGeMAPS_Demographics"])
     parser.add_argument("--feature_selector_method", type=str, default="rfe", choices=["mi_based", "corr_based", "rfe", "passthrough"])
     args = parser.parse_args()
     
@@ -20,6 +21,7 @@ def main():
         case_idx = int(os.environ.get("SLURM_ARRAY_TASK_ID", "8"))
 
     model_name = args.model_name
+    feature_set = args.feature_set
     feature_selector_method = args.feature_selector_method
     
     N_REPEATS = 10
@@ -40,7 +42,7 @@ def main():
         "inner_n_jobs": 1
     }
 
-    config = create_configs(case_idx, model_name, feature_selector_method, n_dict)
+    config = create_configs(case_idx, model_name, feature_set, feature_selector_method, n_dict)
     out_dir = f"../results/{model_name}_{feature_selector_method}/array={case_idx}"
     config.update({"out_dir": out_dir})
     os.makedirs(out_dir, exist_ok=True)

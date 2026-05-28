@@ -27,28 +27,44 @@ def load_data(config):
             temp_df = pd.read_csv(file_name)
             temp_df = temp_df[temp_df["Sex"].isin(sexes)]
             temp_df["Anxiety_Binary"] = temp_df["GAD7_Total"].apply(lambda x: 1 if x >= 5 else 0)
+            temp_df["Sex"] = temp_df["Sex"].apply(lambda x: 1 if x == "Male" else 0)
+            temp_df["Health_Binary"] = temp_df["Health_Binary"].apply(lambda x: 1 if x == "Good" else 0)
             df_list.append(temp_df)
 
     combined_df = pd.concat(df_list, axis=0, ignore_index=True)
 
     metadata_cols = [
-        "SessionID", "QBF_Name", "JohnFarm_Name", "Sex", "Age", "Health", "Health_Binary",
-        "Country", "GAD7_Total", "Anxiety_Category", "Anxiety_Binary"
+        "SessionID", "QBF_Name", "JohnFarm_Name", "Health", "Country",
+        "GAD7_Total", "Anxiety_Category", "Anxiety_Binary"
     ]
 
+    if config["feature_set"] == "eGeMAPS":
+        metadata_cols.append("Sex")
+        metadata_cols.append("Age")
+        metadata_cols.append("Health_Binary")
+        cat_cols = []
+
+    elif config["feature_set"] == "eGeMAPS_Demographics":
+        cat_cols = ["Sex", "Health_Binary"]
+        if sexes != ["Male", "Female"]:
+            metadata_cols.append("Sex")
+            cat_cols = ["Health_Binary"]
+    
     groups = combined_df["SessionID"].to_numpy()
     X = combined_df.drop(columns=metadata_cols, errors='ignore')
     y = combined_df["Anxiety_Binary"]
+    num_cols = X.columns.difference(cat_cols).tolist()
 
-    return X, y, groups
+    return X, y, groups, num_cols, cat_cols
 
 # Create configuration file for experiments
-def create_configs(case_idx, model_name, feature_selector_method, n_dict):
+def create_configs(case_idx, model_name, feature_set, feature_selector_method, n_dict):
     """Creates a configuration dictionary for the specified case index, model name, feature selector method, and additional parameters.
     
     Args:
         case_idx (int): Index of the case to create configuration for.
         model_name (str): Name of the machine learning model to be used.
+        feature_set (str): Set of features to be used.
         feature_selector_method (str): Method for feature selection.
         n_dict (dict): Additional parameters to be included in the configuration.
     
@@ -80,6 +96,7 @@ def create_configs(case_idx, model_name, feature_selector_method, n_dict):
     
     config = grid[case_idx]
     config.update({"model_name": model_name})
+    config.update({"feature_set": feature_set})
     config.update({"feature_selector_method": feature_selector_method})
     config.update(n_dict)
     return config

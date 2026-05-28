@@ -14,7 +14,7 @@ def run_experiment(config: dict):
     Runs nested cross-validation with hyperparameter tuning and saves the results.
     """
     # Load data
-    X, y, groups = load_data(config)
+    X, y, groups, num_cols, cat_cols = load_data(config)
 
     # Define scoring metrics
     scoring = {
@@ -30,7 +30,12 @@ def run_experiment(config: dict):
     
     try:
         # Build pipeline
-        pipeline = build_pipeline(config=config, memory=memory)
+        pipeline = build_pipeline(
+            config=config, 
+            num_cols=num_cols,
+            cat_cols=cat_cols,
+            memory=memory
+        )
 
         # Get hyperparameter space
         param_distributions = param_space(config=config)

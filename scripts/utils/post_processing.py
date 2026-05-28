@@ -139,7 +139,11 @@ def _compute_single_fold_shap(fold_idx, train_idx, val_idx, search_estimator, mo
     X_train_fold = X.iloc[train_idx]
     X_val_fold = X.iloc[val_idx]
 
-    preprocessor = best_estimator[:-2]  # Exclude oversampling and classifier
+    # Drop only the classifier. The resulting ImbPipeline will automatically 
+    # skip the 'oversampler' and 'outlier_removal' when you call preprocessor.transform(X)
+    preprocessor = best_estimator[:-1] 
+
+    # Extract the classifier
     classifier = best_estimator[-1]
 
     X_train_trans = preprocessor.transform(X_train_fold)

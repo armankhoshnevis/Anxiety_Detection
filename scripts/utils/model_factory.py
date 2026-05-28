@@ -18,7 +18,9 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.feature_selection import RFE
 from sklearn.ensemble import RandomForestClassifier
 
-from imblearn.over_sampling import SMOTE
+from imblearn.over_sampling import SMOTE, SMOTENC
+
+from sklearn.compose import ColumnTransformer
 
 from imblearn.pipeline import Pipeline as ImbPipeline
 
@@ -93,18 +95,35 @@ class CorrelationBasedFeatureSelection(BaseEstimator, TransformerMixin):
         return self
 
 # Build the machine learning pipeline
-def build_pipeline(config, memory=None):
+def build_pipeline(config, num_cols, cat_cols, memory=None):
     """Builds and returns a machine learning pipeline with power transformation and standard scaling,
     outlier removal, feature selection, oversampling, and classification steps.
     
     Args:
         config (dict): Configuration dictionary containing model and feature selection parameters.
+        num_cols (list): List of numerical column names.
+        cat_cols (list): List of categorical column names.
         memory: Optional memory parameter for caching transformers in the pipeline.
     
     Returns:
         pipeline (ImbPipeline): An imbalanced-learn pipeline with the specified steps.
     """
     yj_pt = PowerTransformer(method="yeo-johnson", standardize=True)
+    if config["feature_set"] == "eGeMAPS_Demographics":
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ("num", yj_pt, num_cols),
+                ("cat", "passthrough", cat_cols)
+            ],
+            remainder="drop",
+            verbose_feature_names_out=False
+        )
+        
+        cat_indices = list(range(len(num_cols), len(num_cols) + len(cat_cols)))
+        oversampler = SMOTENC(categorical_features=cat_indices, random_state=42)
+    else:
+        preprocessor = yj_pt
+        oversampler = SMOTE(random_state=42)
     
     lof_sampler = FunctionSampler(
         func=lof_outlier_removal,
@@ -128,8 +147,6 @@ def build_pipeline(config, memory=None):
     
     elif config["feature_selector_method"] == "passthrough":
         feature_selector = "passthrough"
-
-    smote = SMOTE(random_state=42)
 
     model_name = config["model_name"]
     if model_name == "SVC":
@@ -189,10 +206,10 @@ def build_pipeline(config, memory=None):
         raise ValueError(f"Unsupported model_name: {model_name}")
 
     steps = [
-        ("yj_pt", yj_pt),
+        ("preprocessor", preprocessor),
         ("outlier_removal", lof_sampler),
+        ("oversampler", oversampler),
         ("feature_selector", feature_selector),
-        ("oversampling", smote),
         ("classifier", clf),
     ]
     
@@ -231,7 +248,7 @@ def param_space(config):
     
     if model_name == "SVC":
         param_distributions.update({
-            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "oversampler__k_neighbors": randint(3, 8),  # [3, 7]
             "classifier__C": loguniform(1e-3, 1e6),
             "classifier__gamma": loguniform(1e-6, 1e2),
             "classifier__kernel": ["rbf"],
@@ -240,7 +257,7 @@ def param_space(config):
     
     elif model_name == "DT":
         param_distributions.update({
-            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "oversampler__k_neighbors": randint(3, 8),  # [3, 7]
             "classifier__max_depth": randint(3, 21),  # [3, 20]
             "classifier__max_features": ["sqrt", "log2", 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
             "classifier__min_samples_split": uniform(0.05, 0.35),  # Fraction [0.05, 0.4]
@@ -251,7 +268,7 @@ def param_space(config):
     
     elif model_name == "RF":
         param_distributions.update({
-            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "oversampler__k_neighbors": randint(3, 8),  # [3, 7]
             "classifier__n_estimators": randint(200, 1001),  # [200, 1000]
             "classifier__max_depth": randint(3, 21),  # [3, 20]
             "classifier__max_features": ["sqrt", "log2", 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
@@ -263,7 +280,7 @@ def param_space(config):
     
     elif model_name == "GB":
         param_distributions.update({
-            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "oversampler__k_neighbors": randint(3, 8),  # [3, 7]
             "classifier__learning_rate": loguniform(5e-3, 5e-1),
             "classifier__max_depth": randint(3, 8),  # [3, 7]
             "classifier__max_features": ["sqrt", "log2", 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
@@ -275,7 +292,7 @@ def param_space(config):
     
     elif model_name == "XGB":
         param_distributions.update({
-            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "oversampler__k_neighbors": randint(3, 8),  # [3, 7]
             "classifier__n_estimators": randint(200, 1001),  # [200, 1000]
             "classifier__learning_rate": loguniform(1e-3, 3e-1),  # [0.001, 0.3]
             "classifier__min_child_weight": uniform(1, 7),  # [1, 8]
@@ -289,7 +306,7 @@ def param_space(config):
     
     elif model_name == "LGBM":
         param_distributions.update({
-            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "oversampler__k_neighbors": randint(3, 8),  # [3, 7]
             "classifier__num_leaves": randint(24, 91),  # [24, 90]
             "classifier__min_child_samples": randint(15, 101),  # [15, 100]
             "classifier__max_depth": randint(3, 11),  # [3, 10]
@@ -312,7 +329,7 @@ def param_space(config):
         ]
 
         param_distributions.update({
-            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "oversampler__k_neighbors": randint(3, 8),  # [3, 7]
             "classifier__hidden_layer_sizes": hidden_layer_sizes,
             "classifier__learning_rate_init": loguniform(1e-5, 1e-2),  # [0.00001, 0.01]
             "classifier__batch_size": [16, 32, 64, 128, "auto"],
@@ -324,14 +341,14 @@ def param_space(config):
     
     elif model_name == "NB":
         param_distributions.update({
-            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "oversampler__k_neighbors": randint(3, 8),  # [3, 7]
             "classifier__var_smoothing": loguniform(1e-11, 1e-7),  # [1e-11, 1e-7]
         })
         return param_distributions
     
     elif model_name == "KNN":
         param_distributions.update({
-            "oversampling__k_neighbors": randint(3, 8),  # [3, 7]
+            "oversampler__k_neighbors": randint(3, 8),  # [3, 7]
             "classifier__n_neighbors": list(range(3, 22, 2)),  # [3, 5, 7, ..., 21]
             "classifier__weights": ["uniform", "distance"],
             "classifier__algorithm": ["ball_tree", "kd_tree", "brute"],

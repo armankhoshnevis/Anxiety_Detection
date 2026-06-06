@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 
-from functools import partial
 from scipy.stats import randint, uniform, loguniform
 
 from .preprocessing import lof_outlier_removal
@@ -9,11 +8,6 @@ from .preprocessing import lof_outlier_removal
 from sklearn.preprocessing import PowerTransformer
 
 from imblearn import FunctionSampler
-
-from sklearn.feature_selection import SelectPercentile
-from sklearn.feature_selection import mutual_info_classif
-
-from sklearn.base import BaseEstimator, TransformerMixin
 
 from sklearn.feature_selection import RFE
 from sklearn.ensemble import RandomForestClassifier
@@ -32,67 +26,6 @@ from lightgbm import LGBMClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
-
-# Define the custom correlation-based feature selection class
-class CorrelationBasedFeatureSelection(BaseEstimator, TransformerMixin):
-    def __init__(self, intercorr_threshold=0.90, target_corr_threshold=0.25):
-        self.intercorr_threshold = intercorr_threshold
-        self.target_corr_threshold = target_corr_threshold
-        self.to_drop_intercorrelated_ = []
-        self.to_drop_target_corr_ = []
-        self.to_drop_ = []
-        self.selected_features_ = []
-
-    def fit(self, X, y):
-        X_df = pd.DataFrame(X) if isinstance(X, np.ndarray) else X
-        y_series = pd.Series(y) if isinstance(y, np.ndarray) else y
-        
-        corr_matrix = X_df.corr().abs()
-        upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-        target_corr = X_df.apply(lambda col: col.corr(y_series)).abs()
-        
-        drop_intercorr_set = set()
-        for col in upper_tri.columns:
-            for row in upper_tri.index:
-                if upper_tri.loc[row, col] > self.intercorr_threshold:
-                    if row not in drop_intercorr_set and col not in drop_intercorr_set:
-                        if target_corr[row] >= target_corr[col]:
-                            drop_intercorr_set.add(col)
-                        else:
-                            drop_intercorr_set.add(row)
-        
-        self.to_drop_intercorrelated_ = list(drop_intercorr_set)
-
-        X_reduced = X_df.drop(columns=self.to_drop_intercorrelated_, errors='ignore')
-        target_corr_reduced = target_corr.loc[X_reduced.columns]
-        n_reduced = len(target_corr_reduced)
-        n_keep = int(np.ceil(self.target_corr_threshold * n_reduced))
-
-        self.selected_features_ = (
-            target_corr_reduced
-            .sort_values(ascending=False)
-            .head(n_keep)
-            .index
-            .tolist()
-        )
-
-        to_drop_target_corr_ = [
-            col for col in X_reduced.columns
-            if col not in self.selected_features_
-        ]
-
-        self.to_drop_target_corr_ = to_drop_target_corr_
-        self.to_drop_ = self.to_drop_intercorrelated_ + self.to_drop_target_corr_
-
-        return self
-
-    def transform(self, X):
-        X_df = pd.DataFrame(X) if isinstance(X, np.ndarray) else X.copy()
-        X_selected = X_df.drop(columns=self.to_drop_, errors='ignore')
-        return X_selected.values if isinstance(X, np.ndarray) else X_selected
-
-    def set_output(self, transform):
-        return self
 
 # Build the machine learning pipeline
 def build_pipeline(config, num_cols, cat_cols, memory=None):
@@ -136,13 +69,7 @@ def build_pipeline(config, num_cols, cat_cols, memory=None):
         validate=False,
     )
     
-    if config["feature_selector_method"] == "mi_based":
-        feature_selector = SelectPercentile(score_func=partial(mutual_info_classif, n_neighbors=5, random_state=42))
-    
-    elif config["feature_selector_method"] == "corr_based":
-        feature_selector = CorrelationBasedFeatureSelection(intercorr_threshold=0.90, target_corr_threshold=0.25)
-    
-    elif config["feature_selector_method"] == "rfe":
+    if config["feature_selector_method"] == "rfe":
         feature_selector = RFE(estimator=RandomForestClassifier(n_estimators=25, random_state=42), step = 0.1)
     
     elif config["feature_selector_method"] == "passthrough":
@@ -230,18 +157,8 @@ def param_space(config):
     feature_selector_method = config["feature_selector_method"]
     
     param_distributions = {}
-    if feature_selector_method == "mi_based":
-        param_distributions.update({
-            "feature_selector__percentile": randint(50, 91),  # [50, 90]
-        })
-    
-    elif feature_selector_method == "corr_based":
-        param_distributions.update({
-            "feature_selector__intercorr_threshold": uniform(0.85, 0.1),  # [0.85, 0.95]
-            "feature_selector__target_corr_threshold": uniform(0.2, 0.1),  # [0.2, 0.3]
-        })
 
-    elif feature_selector_method == "rfe":
+    if feature_selector_method == "rfe":
         param_distributions.update({
             "feature_selector__n_features_to_select": uniform(0.1, 0.9),  # [0.1, 1.0]
         })

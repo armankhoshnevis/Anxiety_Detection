@@ -2,7 +2,10 @@ from tempfile import mkdtemp
 from shutil import rmtree
 from joblib import Memory
 
-from sklearn.model_selection import StratifiedGroupKFold, RandomizedSearchCV, cross_validate
+from sklearn.model_selection import (
+    StratifiedGroupKFold, GroupKFold,
+    RandomizedSearchCV, cross_validate
+)
 
 from scripts.utils.data_loader import load_data
 from scripts.utils.model_factory import build_pipeline, param_space
@@ -17,12 +20,22 @@ def run_experiment(config: dict):
     X, y, groups, num_cols, cat_cols = load_data(config)
 
     # Define scoring metrics
-    scoring = {
-        "roc_auc": "roc_auc",
-        "balanced_accuracy": "balanced_accuracy",
-        "average_precision": "average_precision",
-        "f1": "f1"
-    }
+    if config["prediction_task"] == "classification-binary":
+        scoring = {
+            "roc_auc": "roc_auc",
+            "balanced_accuracy": "balanced_accuracy",
+            "average_precision": "average_precision",
+            "f1": "f1"
+        }
+        tuning_scoring = "roc_auc"
+    
+    else:
+        scoring = {
+            "neg_root_mean_squared_error": "neg_root_mean_squared_error",
+            "neg_mean_absolute_error": "neg_mean_absolute_error",
+            "r2": "r2",
+        }
+        tuning_scoring = "neg_root_mean_squared_error"
 
     # Setup caching for pipeline
     cachedir = mkdtemp()
@@ -42,26 +55,42 @@ def run_experiment(config: dict):
 
         # Setup cross-validation
         outer_splits = []
-        for i in range(config["n_repeats"]):
-            sgkf = StratifiedGroupKFold(
-                n_splits=config["outer_splits"],
+        if config["prediction_task"] == "classification-binary":
+            for i in range(config["n_repeats"]):
+                sgkf = StratifiedGroupKFold(
+                    n_splits=config["outer_splits"],
+                    shuffle=True,
+                    random_state=42+i
+                )
+                outer_splits.extend(list(sgkf.split(X, y, groups)))
+            
+            inner_cv = StratifiedGroupKFold(
+                n_splits=config["inner_splits"],
                 shuffle=True,
-                random_state=42+i
+                random_state=42
             )
-            outer_splits.extend(list(sgkf.split(X, y, groups)))
-
-        inner_cv = StratifiedGroupKFold(
-            n_splits=config["inner_splits"],
-            shuffle=True,
-            random_state=42
-        )
-
+        
+        else:
+            for i in range(config["n_repeats"]):
+                gkf = GroupKFold(
+                    n_splits=config["outer_splits"],
+                    shuffle=True,
+                    random_state=42+i
+                )
+                outer_splits.extend(list(gkf.split(X, y, groups)))
+            
+            inner_cv = GroupKFold(
+                n_splits=config["inner_splits"],
+                shuffle=True,
+                random_state=42
+            )
+        
         # Setup hyperparameter tuning
         search = RandomizedSearchCV(
             estimator=pipeline,
             param_distributions=param_distributions,
             n_iter=config["n_iter"],
-            scoring="roc_auc",
+            scoring=tuning_scoring,
             n_jobs=config["inner_n_jobs"],
             cv=inner_cv,
             verbose=config["inner_verbose"],
@@ -89,10 +118,10 @@ def run_experiment(config: dict):
         results_df, scoring_statistics_df, outer_df, inner_df = save_results(config, results, scoring)
         
         # Compute SHAP values across all outer folds
-        all_shap_dfs, total_shap_df, shap_df_avg = compute_fold_shap(outer_splits, results, config["model_name"], X, config)
+        # all_shap_dfs, total_shap_df, shap_df_avg = compute_fold_shap(outer_splits, results, config["model_name"], X, config)
         
         # Plot SHAP summary
-        plot_shap_summary(shap_df_avg, X, config)
+        # plot_shap_summary(shap_df_avg, X, config)
     
     finally:
         # Clean up temporary cache

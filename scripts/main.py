@@ -8,13 +8,18 @@ from scripts.utils.train_tune_val import run_experiment
 def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser()
+    parser.add_argument("--prediction_task", type=str, default="classification-binary", choices=["classification-binary", "regression"])
     parser.add_argument("--case_idx", type=int, default=None, help="0: QBF/M, 1: JF/M, etc. Defaults to SLURM_ARRAY_TASK_ID or 8.")
     parser.add_argument("--model_name", type=str, default="XGB", choices=["SVC", "DT", "RF", "GB", "XGB", "LGBM", "MLP", "NB", "KNN"])
     parser.add_argument("--feature_set", type=str, default="eGeMAPS", choices=["eGeMAPS", "eGeMAPS_Demographics"])
-    parser.add_argument("--feature_selector_method", type=str, default="rfe", choices=["mi_based", "corr_based", "rfe", "passthrough"])
+    parser.add_argument("--feature_selector_method", type=str, default="rfe", choices=["rfe", "passthrough"])
     args = parser.parse_args()
     
     # Get and set configuration
+    prediction_task = args.prediction_task
+    if prediction_task == "regression" and args.model_name == "NB":
+        parser.error("--model_name NB is only supported for classification-binary.")
+
     if args.case_idx is not None:
         case_idx = args.case_idx
     else:
@@ -42,8 +47,9 @@ def main():
         "inner_n_jobs": 1
     }
 
-    config = create_configs(case_idx, model_name, feature_set, feature_selector_method, n_dict)
-    out_dir = f"../results/{model_name}_{feature_selector_method}/array={case_idx}"
+    config = create_configs(prediction_task, case_idx, model_name, 
+                            feature_set, feature_selector_method, n_dict)
+    out_dir = f"../results/{prediction_task}/{model_name}_{feature_selector_method}/array={case_idx}"
     config.update({"out_dir": out_dir})
     os.makedirs(out_dir, exist_ok=True)
 

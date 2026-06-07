@@ -39,25 +39,25 @@ def save_results(config, results, scoring):
         ]
     
     elif config["model_name"] == "MLP":
-        classifiers = [
+        models = [
             est.best_estimator_.named_steps["model"]
             for est in results["estimator"]
         ]
         params_df["model__loss"] = [
-            getattr(clf, "loss_", None)
-            for clf in classifiers
+            getattr(model, "loss_", None)
+            for model in models
         ]
         params_df["model__best_loss"] = [
-            getattr(clf, "best_loss_", None)
-            for clf in classifiers
+            getattr(model, "best_loss_", None)
+            for model in models
         ]
         params_df["model__best_validation_score"] = [
-            getattr(clf, "best_validation_score_", None)
-            for clf in classifiers
+            getattr(model, "best_validation_score_", None)
+            for model in models
         ]
         params_df["model__n_iter"] = [
-            getattr(clf, "n_iter_", None)
-            for clf in classifiers
+            getattr(model, "n_iter_", None)
+            for model in models
         ]
     
     results_df = pd.concat([results_df.reset_index(drop=True), params_df.reset_index(drop=True)], axis=1)
@@ -117,8 +117,8 @@ def save_results(config, results, scoring):
                 "loss": loss,
                 "validation_score": score
             }
-            for i, clf in enumerate(classifiers)
-            for iteration, (loss, score) in enumerate(zip(getattr(clf, "loss_curve_", []), getattr(clf, "validation_scores_", [])))
+            for i, model in enumerate(models)
+            for iteration, (loss, score) in enumerate(zip(getattr(model, "loss_curve_", []), getattr(model, "validation_scores_", [])))
         ])
         
         inner_df.to_csv(f"{config['out_dir']}/inner_cv_results.csv", index=False)
@@ -131,10 +131,10 @@ def _compute_single_fold_shap(fold_idx, train_idx, val_idx, search_estimator, mo
     
     shap_background_fraction = 1/4
     shap_eval_fraction = 1/3
-    shap_background_min = 50 
-    shap_background_max = 100 
-    shap_eval_min = 50 
-    shap_eval_max = 100 
+    shap_background_min = 50
+    shap_background_max = 100
+    shap_eval_min = 50
+    shap_eval_max = 100
 
     best_estimator = search_estimator.best_estimator_
 

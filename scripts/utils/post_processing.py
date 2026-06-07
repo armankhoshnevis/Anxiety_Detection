@@ -34,34 +34,36 @@ def save_results(config, results, scoring):
     params_df = pd.DataFrame.from_records(est.best_params_ for est in results["estimator"])
     
     if config["model_name"] == "GB":
-        params_df["classifier__n_estimators"] = [
-            est.best_estimator_.named_steps["classifier"].n_estimators_ for est in results["estimator"]
+        params_df["model__n_estimators"] = [
+            est.best_estimator_.named_steps["model"].n_estimators_ for est in results["estimator"]
         ]
     
     elif config["model_name"] == "MLP":
         classifiers = [
-            est.best_estimator_.named_steps["classifier"]
+            est.best_estimator_.named_steps["model"]
             for est in results["estimator"]
         ]
-        params_df["classifier__loss"] = [
+        params_df["model__loss"] = [
             getattr(clf, "loss_", None)
             for clf in classifiers
         ]
-        params_df["classifier__best_loss"] = [
+        params_df["model__best_loss"] = [
             getattr(clf, "best_loss_", None)
             for clf in classifiers
         ]
-        params_df["classifier__best_validation_score"] = [
+        params_df["model__best_validation_score"] = [
             getattr(clf, "best_validation_score_", None)
             for clf in classifiers
         ]
-        params_df["classifier__n_iter"] = [
+        params_df["model__n_iter"] = [
             getattr(clf, "n_iter_", None)
             for clf in classifiers
         ]
     
     results_df = pd.concat([results_df.reset_index(drop=True), params_df.reset_index(drop=True)], axis=1)
-    results_df = results_df.sort_values("test_roc_auc", ascending=False)
+    primary_metric = "neg_root_mean_squared_error" if config["prediction_task"] == "regression" else "roc_auc"
+    ascending = config["prediction_task"] == "regression"
+    results_df = results_df.sort_values(f"test_{primary_metric}", ascending=ascending)
     results_df.to_csv(f"{config['out_dir']}/results.csv", index=False)
 
     # Summary statistics of metrics
@@ -180,7 +182,7 @@ def _compute_single_fold_shap(fold_idx, train_idx, val_idx, search_estimator, mo
         explainer = shap.TreeExplainer(
             classifier,
             data=background,
-            model_output="probability",
+            model_output="probability" if config["prediction_task"] == "classification-binary" else "raw",
             feature_perturbation="interventional",
         )
         shap_values = explainer.shap_values(X_val_trans_sampled, check_additivity=False)
@@ -191,9 +193,7 @@ def _compute_single_fold_shap(fold_idx, train_idx, val_idx, search_estimator, mo
             n_background
         )
         explainer = shap.KernelExplainer(
-            lambda X_batch: classifier.predict_proba(
-                pd.DataFrame(X_batch, columns=selected_features_names)
-            )[:, 1],
+            lambda X_batch: classifier.predict_proba(pd.DataFrame(X_batch, columns=selected_features_names))[:, 1] if config["prediction_task"] == "classification-binary" else classifier.predict(pd.DataFrame(X_batch, columns=selected_features_names)),
             background
         )
         shap_values = explainer.shap_values(

@@ -27,6 +27,7 @@ def save_results(config, results, scoring):
     Returns:
         tuple: A tuple containing dataframes of results with best parameters, scoring statistics, outer CV results, and inner CV results.
     """
+    print("\n*** Saving results ... ***\n")
     os.makedirs(config["out_dir"], exist_ok=True)
 
     # DataFrame of results with best parameters
@@ -221,7 +222,7 @@ def compute_fold_shap(outer_splits, results, model_name, X, config, n_jobs=-1):
     """
     Compute SHAP values per outer fold in parallel.
     """
-    print("\n*** Computing SHAP values for each outer fold in parallel... ***\n")
+    print("\n*** Computing SHAP values for each outer fold in parallel ... ***\n")
     os.makedirs(config["out_dir"], exist_ok=True)
     
     all_shap_dfs = Parallel(n_jobs=n_jobs, backend="loky")(
@@ -286,6 +287,7 @@ def plot_shap_summary(shap_df_avg, X, config):
 
 def save_and_plot_gad_predictions(outer_splits, results, X, y, groups, config):
     """Save and plot out-of-sample GAD predictions from outer CV folds."""
+    print("\n*** Saving and plotting GAD regression predictions ... ***\n")
     if config["prediction_task"] != "regression":
         return None
 

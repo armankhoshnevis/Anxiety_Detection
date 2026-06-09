@@ -283,3 +283,94 @@ def plot_shap_summary(shap_df_avg, X, config):
     plt.setp(ax.get_yticklabels(), fontsize=20)
     plt.savefig(f"{config['out_dir']}/SHAP_summary_dot_plot_{config['model_name']}.png", bbox_inches='tight')
     plt.close()
+
+def save_and_plot_gad_predictions(outer_splits, results, X, y, groups, config):
+    """Save and plot out-of-sample GAD predictions from outer CV folds."""
+    if config["prediction_task"] != "regression":
+        return None
+
+    rows = []
+    n_outer = config["outer_splits"]
+
+    for fold_idx, ((train_idx, val_idx), search_estimator) in enumerate(
+        zip(outer_splits, results["estimator"])
+    ):
+        X_val = X.iloc[val_idx]
+        y_true = y.iloc[val_idx].to_numpy()
+        y_pred = search_estimator.predict(X_val)
+
+        fold_df = pd.DataFrame({
+            "repeat": (fold_idx // n_outer) + 1,
+            "outer_fold": (fold_idx % n_outer) + 1,
+            "sample_index": X.index[val_idx],
+            "SessionID": np.asarray(groups)[val_idx],
+            "gad_true": y_true,
+            "gad_pred": y_pred,
+            "residual": y_pred - y_true,
+        })
+        rows.append(fold_df)
+
+    pred_df = pd.concat(rows, ignore_index=True)
+    pred_df.to_csv(f"{config['out_dir']}/gad_outer_predictions.csv", index=False)
+
+    avg_pred_df = (
+        pred_df
+        .groupby(["sample_index", "SessionID"], as_index=False)
+        .agg(
+            gad_true=("gad_true", "first"),
+            gad_pred=("gad_pred", "mean"),
+            gad_pred_std=("gad_pred", "std"),
+            n_predictions=("gad_pred", "size"),
+        )
+    )
+    avg_pred_df["residual"] = avg_pred_df["gad_pred"] - avg_pred_df["gad_true"]
+    avg_pred_df.to_csv(f"{config['out_dir']}/gad_outer_predictions_avg.csv", index=False)
+
+    _plot_gad_prediction_scatter(
+        pred_df,
+        config,
+        filename="gad_prediction_vs_truth_all_outer_predictions.png",
+    )
+
+    _plot_gad_prediction_scatter(
+        avg_pred_df,
+        config,
+        filename="gad_prediction_vs_truth_average_prediction.png",
+    )
+
+    return pred_df, avg_pred_df
+
+def _plot_gad_prediction_scatter(pred_df, config, filename):
+    y_true = pred_df["gad_true"].to_numpy()
+    y_pred = pred_df["gad_pred"].to_numpy()
+
+    residual = y_pred - y_true
+    rmse = np.sqrt(np.mean(residual ** 2))
+    mae = np.mean(np.abs(residual))
+    ss_res = np.sum(residual ** 2)
+    ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else np.nan
+
+    lo = min(y_true.min(), y_pred.min())
+    hi = max(y_true.max(), y_pred.max())
+    pad = max((hi - lo) * 0.05, 1)
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+    ax.scatter(y_true, y_pred, alpha=0.45, s=28, edgecolor="none")
+    ax.plot([lo - pad, hi + pad], [lo - pad, hi + pad], color="black", linewidth=1.5)
+
+    ax.set_xlim(lo - pad, hi + pad)
+    ax.set_ylim(lo - pad, hi + pad)
+    ax.set_xlabel("GAD Ground Truth")
+    ax.set_ylabel("GAD Prediction")
+    ax.text(
+        0.05,
+        0.95,
+        f"RMSE = {rmse:.2f}\nMAE = {mae:.2f}\nR2 = {r2:.2f}",
+        transform=ax.transAxes,
+        va="top",
+    )
+
+    fig.tight_layout()
+    fig.savefig(f"{config['out_dir']}/{filename}", dpi=300, bbox_inches="tight")
+    plt.close(fig)

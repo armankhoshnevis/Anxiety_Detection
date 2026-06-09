@@ -3,7 +3,7 @@
 from .data_loader import load_data, create_configs
 from .preprocessing import lof_outlier_removal
 from .model_factory import build_pipeline, param_space
-from .post_processing import save_results, compute_fold_shap, plot_shap_summary
+from .post_processing import save_results, compute_fold_shap, plot_shap_summary, save_and_plot_gad_predictions
 
 __all__ = [
     "load_data",
@@ -14,4 +14,5 @@ __all__ = [
     "save_results",
     "compute_fold_shap",
     "plot_shap_summary",
+    "save_and_plot_gad_predictions"
 ]

@@ -132,7 +132,6 @@ def run_experiment(config: dict):
 
         # Plot and save GAD regression predictions
         if config["prediction_task"] == "regression":
-            
             save_and_plot_gad_predictions(outer_splits, results, X, y, groups, config)
     
     finally:

@@ -125,10 +125,10 @@ def build_pipeline(config, num_cols, cat_cols, memory=None):
     elif model_name == "XGB":
         model = (
             XGBClassifier(booster="gbtree", tree_method="hist", n_jobs=1,
-                          verbosity=3, random_state=42)
+                          verbosity=0, random_state=42)
             if is_classification
             else XGBRegressor(booster="gbtree", tree_method="hist", n_jobs=1,
-                              verbosity=3, random_state=42)
+                              verbosity=0, random_state=42)
         )
     
     elif model_name == "LGBM":

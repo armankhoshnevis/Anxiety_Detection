@@ -1,3 +1,4 @@
+import os
 from tempfile import mkdtemp
 from shutil import rmtree
 from joblib import Memory
@@ -9,7 +10,7 @@ from sklearn.model_selection import (
 
 from scripts.utils.data_loader import load_data
 from scripts.utils.model_factory import build_pipeline, param_space
-from scripts.utils.post_processing import save_results, plot_shap_summary, compute_fold_shap
+from scripts.utils.post_processing import save_results, plot_shap_summary, compute_fold_shap, save_and_plot_gad_predictions
 
 # Run the experiment with nested cross-validation
 def run_experiment(config: dict):
@@ -38,7 +39,13 @@ def run_experiment(config: dict):
         tuning_scoring = "neg_root_mean_squared_error"
 
     # Setup caching for pipeline
-    cachedir = mkdtemp()
+    cache_root = os.environ.get("PIPELINE_CACHE_DIR")
+    if cache_root:
+        os.makedirs(cache_root, exist_ok=True)
+        cachedir = mkdtemp(prefix="pipeline_cache_", dir=cache_root)
+    else:
+        cachedir = mkdtemp(prefix="pipeline_cache_")
+
     memory = Memory(location=cachedir, verbose=0)
     
     try:
@@ -118,11 +125,16 @@ def run_experiment(config: dict):
         results_df, scoring_statistics_df, outer_df, inner_df = save_results(config, results, scoring)
         
         # Compute SHAP values across all outer folds
-        # all_shap_dfs, total_shap_df, shap_df_avg = compute_fold_shap(outer_splits, results, config["model_name"], X, config)
+        all_shap_dfs, total_shap_df, shap_df_avg = compute_fold_shap(outer_splits, results, config["model_name"], X, config)
         
         # Plot SHAP summary
-        # plot_shap_summary(shap_df_avg, X, config)
+        plot_shap_summary(shap_df_avg, X, config)
+
+        # Plot and save GAD regression predictions
+        if config["prediction_task"] == "regression":
+            
+            save_and_plot_gad_predictions(outer_splits, results, X, y, groups, config)
     
     finally:
         # Clean up temporary cache
-        rmtree(cachedir)
+        rmtree(cachedir, ignore_errors=True)
